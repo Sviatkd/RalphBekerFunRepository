@@ -7,6 +7,7 @@ library(sandwich)
 library(coefplot)
 library(clubSandwich)
 library(aod)
+library(modelsummary)
 #Data Cleaning#
 Rawdata <- read_excel("~/Rawdata.xlsx", sheet = "Sheet1")
 View(Rawdata)
@@ -260,7 +261,6 @@ hcr_vcov <- vcovHC(eventmodel,type = "HC3")
 hcr_vcovh <- vcovHC(hetmodel,type = "HC3")
 hcr_vcovr <- vcovHC(reducedmodel,type = "HC3")
 cluster_vcov <- vcovCR(eventmodel,type = "CR2",cluster = treatment_control_df$Station)
-cluster_vcovc <- vcovCR(eventmodel,type = "CR2",cluster = treatment_control_df$City)
 cluster_vcovh <- vcovCR(hetmodel,type = "CR2",cluster = treatment_control_df$Station)
 cluster_vcovr <- vcovCR(reducedmodel,type = "CR2",cluster = treatment_control_df$Station)
 #Event Study Plots#
@@ -276,15 +276,7 @@ coefplot::coefplot(eventmodel,
   labs(title="NO2 Event(2019.2) Study (Yearly Ticks),HC3(Jacknife)SE",
        x="Estimate", y="Year (Q1 Marked)") +
   theme_gray()
-coefplot::coefplot(eventmodel, 
-                   coefficients = qtr_coefs,innerCI=0, vcov=cluster_vcov,horizontal = TRUE) + scale_y_discrete(labels = function(x) {
-    clean <- gsub("yr_qtr|treatment:yr_qtr", "", x)
-    ifelse(grepl("\\.1$", clean), clean, "")
-  }) + 
-  
-  labs(title="NO2 Event(2019.2) Study (Yearly Ticks),Cluster(Station) Corrected SE",
-       x="Estimate", y="Year (Q1 Marked)") +
-  theme_gray()
+modelplot(eventmodel,vcov = hcr_vcov,coef_omit = "^(?!.*treatment:)",color="darkblue")+geom_vline(xintercept=0)+labs(title="NO2 Event(2019.2) Study,HC3(Jacknife) Corrected SE")+theme_classic()+ geom_hline(yintercept ="treatment:yr_qtr2019.2",linetype = "dashed", colour = "red")
 #Stargazer Tables with Jacknife and Clustered SE#
 aic_row <- c("AIC", round(AIC(eventmodel), 2), round(AIC(hetmodel), 2), round(AIC(reducedmodel), 2))
 bic_row <- c("BIC", round(BIC(eventmodel), 2), round(BIC(hetmodel), 2), round(BIC(reducedmodel), 2))
@@ -295,18 +287,18 @@ stargazer(eventmodel,hetmodel,reducedmodel,
           se=list(sqrt(diag(cluster_vcov)),sqrt(diag(cluster_vcovh)),sqrt(diag(cluster_vcovr))),column.labels = c("Event Model", "Heterogeneous Model","Reduced Model"),add.lines = list(aic_row, bic_row),omit.stat = c("f", "ser"),
           header = FALSE,type = "text",title="Pollutant Levels(NO2),Station and Quarter FE,CR2 Cluster(Station) SE",omit = c("^Station", "yr_qtr"))
 #Table comparing robust SE estimates#
-stargazer(eventmodel, eventmodel,eventmodel,
-          se = list(sqrt(diag(cluster_vcov)), sqrt(diag(hcr_vcov)),sqrt(diag(cluster_vcovc))), 
-          column.labels = c("Small-Cluster Station (CR2)", "Leverage-Corr (HC3)","City(CR2)"),
+stargazer(eventmodel, eventmodel,
+          se = list(sqrt(diag(cluster_vcov)), sqrt(diag(hcr_vcov))), 
+          column.labels = c("Small-Cluster Station (CR2)", "Leverage-Corr (HC3)","City(CR3)"),
           add.lines = list(
-            c("Clustering", "Station" ,"None (Jacknife)", "City"),
-            c("Robustness", "Small-G(15) Adj", "Leverage Adj", "Small-G(5) Adj")),
+            c("Clustering", "Station" ,"None (Jacknife)"),
+            c("Robustness", "Small-G(15) Adj", "Leverage Adj"),
           # "n" omits the observation count
           omit.stat = c("f", "ser", "rsq", "adj.rsq", "n"),
           header = FALSE,
           type = "text",
           title = "Comparison of Robust Inference Methods (Event Model)",
-          omit = c("^Station", "^yr_qtr"))
+          omit = c("^Station", "^yr_qtr")))
 #Wald Tests#
 # Get clean coefficients (no NAs)
 betas_event <- na.omit(coef(eventmodel))
@@ -325,8 +317,8 @@ library(aod)
 wald_pre <- wald.test(Sigma = hcr_vcov, b = betas_event, Terms = pre_indices)
 print(wald_pre)
 # TEST 1.5: Pre-Trends including anticipation of 1 quarter (Null = No difference between groups before 2019.1)
-wald_preant <- wald.test(Sigma = hcr_vcov, b = betas_event, Terms = pre_indicesant)
-print(wald_preant)
+wald_preanticipation <- wald.test(Sigma = hcr_vcov, b = betas_event, Terms = pre_indicesant)
+print(wald_preanticipation)
 
 # TEST 2: Post-Policy (Null = No impact after the start of 2019.2)
 wald_post <- wald.test(Sigma = hcr_vcov, b = betas_event, Terms = post_indices)
@@ -349,11 +341,11 @@ for(i in 1:(length(post_indices_v) - 1)) {
 }
 
 # 4. Run the test with the subsetted coefficients (b) that match the Sigma
-wald_homog <- wald.test(Sigma = hcr_vcov, 
+wald_constanttimeeffects <- wald.test(Sigma = hcr_vcov, 
                         b = coef(eventmodel)[vcov_names], 
                         L = L_homog)
 
-print(wald_homog)
+print(wald_constanttimeeffects)
 # 1. Get the full vector of coefficients
 betas <- coef(hetmodel)
 
@@ -364,8 +356,12 @@ target_indices <- which(grepl("did1:StationLondon", names(betas_clean)))
 
 # 3. Perform the Wald Test
 # Sigma is your HC3 matrix, b is the vector of estimated coefficients
-joint_test_hc3 <- wald.test(Sigma = hcr_vcovh, 
+joint_test_hc3homogenousstationeffects <- wald.test(Sigma = hcr_vcovh, 
                             b = betas_clean, 
                             Terms = target_indices)
 
-print(joint_test_hc3)
+print(joint_test_hc3homogenousstationeffects)
+print(wald_pre)
+print(wald_preanticipation)
+print(wald_post)
+print(wald_constanttimeeffects)
