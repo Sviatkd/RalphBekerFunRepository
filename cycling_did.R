@@ -1,14 +1,16 @@
 # ============================================================
 # Cycling Demand - Difference-in-Differences (DiD) Analysis
-# Data: TRA0403 - Pedal cycle traffic (billion vehicle miles)
-# Treatment: London (ULEZ introduced 2019)
-# Control: Scotland, North West
-# Policy cutoff: 2019
-# SE Method: HC3 (Jackknife) - preferred for small samples
-#            with high leverage points and noisy data
+# TRA0403: Pedal cycle traffic (billion vehicle miles)
+# Treatment: London | Controls: North West, Scotland
+# Policy cutoff: 2019 (ULEZ)
+# SE: HC3 Jackknife (primary) + CR2 Region-clustered (robustness)
 # ============================================================
 
-# --- 1. Install & Load Libraries ---
+
+# ============================================================
+# 1. Libraries
+# ============================================================
+
 if (!require("readODS"))      install.packages("readODS")
 if (!require("tidyverse"))    install.packages("tidyverse")
 if (!require("lmtest"))       install.packages("lmtest")
@@ -17,6 +19,8 @@ if (!require("clubSandwich")) install.packages("clubSandwich")
 if (!require("stargazer"))    install.packages("stargazer")
 if (!require("ggplot2"))      install.packages("ggplot2")
 if (!require("skimr"))        install.packages("skimr")
+if (!require("aod"))          install.packages("aod")
+if (!require("car"))          install.packages("car")
 
 library(readODS)
 library(tidyverse)
@@ -26,19 +30,23 @@ library(clubSandwich)
 library(stargazer)
 library(ggplot2)
 library(skimr)
+library(aod)
+library(car)
+
 
 # ============================================================
-# 2. Set Working Directory & Load Data
+# 2. Load Data
 # ============================================================
 
-setwd(".")   # Change to your folder path if needed
+setwd("C:/Users/kalid/OneDrive/Desktop/New folder")
 
 raw <- read_ods("tra0403-miles-pedal-cycle-traffic-by-region.ods",
                 sheet = "TRA0403",
                 skip  = 3)
 
+
 # ============================================================
-# 3. Clean & Reshape Data
+# 3. Clean & Reshape
 # ============================================================
 
 colnames(raw)[1] <- "Region"
@@ -47,19 +55,14 @@ colnames(raw)[3] <- "Notes"
 colnames(raw)[4] <- "Units"
 colnames(raw)[5:ncol(raw)] <- as.character(1993:2024)
 
-# Keep only "All" summary rows for London, North West, Scotland
 regions_keep <- c("London", "North West", "Scotland")
 
 df_wide <- raw %>%
   filter(Region %in% regions_keep,
          grepl("All", Subarea, ignore.case = TRUE)) %>%
-  select(Region, all_of(as.character(1993:2024)))
-
-# Force all year columns to numeric BEFORE pivoting (fixes mixed type error)
-df_wide <- df_wide %>%
+  select(Region, all_of(as.character(1993:2024))) %>%
   mutate(across(as.character(1993:2024), as.numeric))
 
-# Pivot to long format
 df_long <- df_wide %>%
   pivot_longer(cols      = as.character(1993:2024),
                names_to  = "Year",
@@ -67,8 +70,9 @@ df_long <- df_wide %>%
   mutate(Year            = as.integer(Year),
          CycleTraffic_bn = as.numeric(CycleTraffic_bn))
 
+
 # ============================================================
-# 4. DiD Variable Construction
+# 4. DiD Variables
 # ============================================================
 
 df_did <- df_long %>%
@@ -79,14 +83,15 @@ df_did <- df_long %>%
     log_cycle = log(CycleTraffic_bn)
   )
 
+
 # ============================================================
 # 5. Summary Statistics
 # ============================================================
 
-cat("\n========== FULL SUMMARY (skimr) ==========\n")
+cat("\n========== FULL SUMMARY ==========\n")
 skim(df_did)
 
-cat("\n========== SUMMARY STATS BY REGION ==========\n")
+cat("\n========== BY REGION ==========\n")
 df_did %>%
   group_by(Region) %>%
   summarise(
@@ -95,23 +100,20 @@ df_did %>%
     Min  = round(min(CycleTraffic_bn,  na.rm = TRUE), 3),
     Max  = round(max(CycleTraffic_bn,  na.rm = TRUE), 3),
     N    = n()
-  ) %>%
-  print()
+  ) %>% print()
 
-cat("\n========== SUMMARY STATS PRE vs POST 2019 ==========\n")
+cat("\n========== PRE vs POST 2019 ==========\n")
 df_did %>%
   group_by(Region, post) %>%
   summarise(
     Mean = round(mean(CycleTraffic_bn, na.rm = TRUE), 3),
     SD   = round(sd(CycleTraffic_bn,   na.rm = TRUE), 3),
-    N    = n(),
-    .groups = "drop"
+    N    = n(), .groups = "drop"
   ) %>%
   mutate(Period = if_else(post == 1, "Post-2019", "Pre-2019")) %>%
-  select(Region, Period, Mean, SD, N) %>%
-  print()
+  select(Region, Period, Mean, SD, N) %>% print()
 
-cat("\n========== SUMMARY STATS (ulez_stats style) ==========\n")
+cat("\n========== ULEZ STYLE SUMMARY ==========\n")
 cycling_stats <- df_did %>%
   mutate(ULEZ = if_else(post == 1, "Post-ULEZ", "Pre-ULEZ")) %>%
   group_by(Region, ULEZ) %>%
@@ -124,10 +126,8 @@ cycling_stats <- df_did %>%
   ) %>%
   rename(Mode = Region) %>%
   arrange(Mode, desc(ULEZ))
-
 print(cycling_stats)
 
-# Save all summary stats to file
 sink("cycling_summary_stats.txt")
 skim(df_did)
 df_did %>%
@@ -147,8 +147,9 @@ df_did %>%
 print(cycling_stats)
 sink()
 
+
 # ============================================================
-# 6. Parallel Trends Plot (Pre-treatment visual check)
+# 6. Parallel Trends Plot (pre-2019 only)
 # ============================================================
 
 pre_trends <- df_did %>%
@@ -173,8 +174,9 @@ pre_trends <- df_did %>%
 print(pre_trends)
 ggsave("cycling_parallel_trends.png", pre_trends, width = 9, height = 5.5, dpi = 150)
 
+
 # ============================================================
-# 7. Full Time Series Plot
+# 7. Full Time Series Plot (1993-2024)
 # ============================================================
 
 full_plot <- df_did %>%
@@ -199,57 +201,47 @@ full_plot <- df_did %>%
 print(full_plot)
 ggsave("cycling_full_timeseries.png", full_plot, width = 9, height = 5.5, dpi = 150)
 
+
 # ============================================================
-# 8. DiD Regressions
-# NOTE: Using HC3 (Jackknife) SE adjustment as recommended.
-# HC3 penalizes high leverage points and is preferred over HC1
-# for noisy data with small number of independent observations.
-# CR2 clustered SEs at Region level included as robustness check.
-# Caution: only 3 clusters - interpret clustered SEs carefully.
+# 8. DiD Models
+# Four specs: levels and log, with and without COVID years
+# HC3 Jackknife SEs (primary) + CR2 Region-clustered (robustness)
 # ============================================================
 
-# Model 1: Basic DiD (levels)
 model1 <- lm(CycleTraffic_bn ~ treated + post + did, data = df_did)
+model2 <- lm(log_cycle       ~ treated + post + did, data = df_did)
 
-# Model 2: DiD (log levels)
-model2 <- lm(log_cycle ~ treated + post + did, data = df_did)
-
-# Model 3: DiD levels excluding COVID years (2020-2021)
 df_no_covid <- df_did %>% filter(!Year %in% c(2020, 2021))
 model3 <- lm(CycleTraffic_bn ~ treated + post + did, data = df_no_covid)
+model4 <- lm(log_cycle       ~ treated + post + did, data = df_no_covid)
 
-# Model 4: DiD log excluding COVID
-model4 <- lm(log_cycle ~ treated + post + did, data = df_no_covid)
-
-# --- HC3 (Jackknife) Standard Errors ---
 se1_hc3 <- sqrt(diag(vcovHC(model1, type = "HC3")))
 se2_hc3 <- sqrt(diag(vcovHC(model2, type = "HC3")))
 se3_hc3 <- sqrt(diag(vcovHC(model3, type = "HC3")))
 se4_hc3 <- sqrt(diag(vcovHC(model4, type = "HC3")))
 
-# --- CR2 Clustered SEs at Region level (robustness check) ---
 cluster_se1 <- sqrt(diag(vcovCR(model1, cluster = df_did$Region,      type = "CR2")))
 cluster_se2 <- sqrt(diag(vcovCR(model2, cluster = df_did$Region,      type = "CR2")))
 cluster_se3 <- sqrt(diag(vcovCR(model3, cluster = df_no_covid$Region, type = "CR2")))
 cluster_se4 <- sqrt(diag(vcovCR(model4, cluster = df_no_covid$Region, type = "CR2")))
 
+
 # ============================================================
-# 9. Print Results
+# 9. Print Regression Results
 # ============================================================
 
-cat("\n========== MODEL 1: DiD Levels (HC3) ==========\n")
+cat("\n========== MODEL 1: Levels (HC3) ==========\n")
 print(coeftest(model1, vcov = vcovHC(model1, type = "HC3")))
 
-cat("\n========== MODEL 2: DiD Log Levels (HC3) ==========\n")
+cat("\n========== MODEL 2: Log Levels (HC3) ==========\n")
 print(coeftest(model2, vcov = vcovHC(model2, type = "HC3")))
 
-cat("\n========== MODEL 3: DiD Levels No COVID (HC3) ==========\n")
+cat("\n========== MODEL 3: Levels No COVID (HC3) ==========\n")
 print(coeftest(model3, vcov = vcovHC(model3, type = "HC3")))
 
-cat("\n========== MODEL 4: DiD Log Levels No COVID (HC3) ==========\n")
+cat("\n========== MODEL 4: Log Levels No COVID (HC3) ==========\n")
 print(coeftest(model4, vcov = vcovHC(model4, type = "HC3")))
 
-# Stargazer table - HC3 SEs
 stargazer(model1, model2, model3, model4,
           se               = list(se1_hc3, se2_hc3, se3_hc3, se4_hc3),
           type             = "text",
@@ -262,7 +254,6 @@ stargazer(model1, model2, model3, model4,
           digits           = 4,
           out              = "cycling_did_results_HC3.txt")
 
-# Stargazer table - CR2 Clustered SEs (robustness)
 stargazer(model1, model2, model3, model4,
           se               = list(cluster_se1, cluster_se2, cluster_se3, cluster_se4),
           type             = "text",
@@ -275,12 +266,11 @@ stargazer(model1, model2, model3, model4,
           digits           = 4,
           out              = "cycling_did_results_CR2.txt")
 
-# Comparison table: HC3 vs CR2
 stargazer(model1, model1,
           se               = list(se1_hc3, cluster_se1),
           type             = "text",
-          title            = "Comparison of SE Methods - DiD Levels Model",
-          column.labels    = c("HC3 (Jackknife)", "CR2 (Clustered by Region)"),
+          title            = "SE Method Comparison - DiD Levels Model",
+          column.labels    = c("HC3 Jackknife", "CR2 Clustered by Region"),
           add.lines        = list(
             c("SE Method",     "HC3 Jackknife",  "CR2 Clustered"),
             c("Cluster Level", "None",           "Region (G=3)")
@@ -290,6 +280,7 @@ stargazer(model1, model1,
           omit.stat        = c("f", "ser"),
           digits           = 4,
           out              = "cycling_se_comparison.txt")
+
 
 # ============================================================
 # 10. DiD Coefficient Plot (HC3)
@@ -328,8 +319,9 @@ coef_plot <- ggplot(did_coefs,
 print(coef_plot)
 ggsave("cycling_did_coefplot.png", coef_plot, width = 8, height = 5, dpi = 150)
 
+
 # ============================================================
-# 11. Event Study (Year-by-year treatment effects, HC3)
+# 11. Event Study (year-by-year treatment effects, HC3)
 # ============================================================
 
 df_event <- df_did %>%
@@ -338,11 +330,9 @@ df_event <- df_did %>%
 model_event <- lm(CycleTraffic_bn ~ treated:year_fct + year_fct + treated,
                   data = df_event)
 
-# HC3 Jackknife SEs for event study
 event_vcov  <- vcovHC(model_event, type = "HC3")
 event_coefs <- coeftest(model_event, vcov = event_vcov)
 
-# Extract coefficients safely by position
 event_df_raw <- data.frame(
   term     = rownames(event_coefs),
   Estimate = event_coefs[, 1],
@@ -385,11 +375,13 @@ event_plot <- ggplot(event_df,
 print(event_plot)
 ggsave("cycling_event_study.png", event_plot, width = 10, height = 5.5, dpi = 150)
 
+
 # ============================================================
-# 12. Placebo Tests
+# 12. Placebo Tests (HC3)
+# Fake year (2015) and fake treatment region (North West)
+# Both DiD coefficients should be insignificant
 # ============================================================
 
-# --- Placebo 1: Fake policy year = 2015 (pre-2019 data only) ---
 df_placebo_time <- df_did %>%
   filter(Year <= 2018) %>%
   mutate(
@@ -403,7 +395,6 @@ model_placebo_time <- lm(CycleTraffic_bn ~ treated + post_placebo + did_placebo,
 cat("\n========== PLACEBO 1: Fake Policy Year 2015 ==========\n")
 print(coeftest(model_placebo_time, vcov = vcovHC(model_placebo_time, type = "HC3")))
 
-# --- Placebo 2: Fake treatment = North West (exclude London) ---
 df_placebo_space <- df_did %>%
   filter(Region != "London") %>%
   mutate(
@@ -414,11 +405,52 @@ df_placebo_space <- df_did %>%
 model_placebo_space <- lm(CycleTraffic_bn ~ treated_placebo + post + did_placebo,
                           data = df_placebo_space)
 
-cat("\n========== PLACEBO 2: Fake Treatment Region (North West) ==========\n")
+cat("\n========== PLACEBO 2: Fake Treatment - North West ==========\n")
 print(coeftest(model_placebo_space, vcov = vcovHC(model_placebo_space, type = "HC3")))
 
-cat("\nNote: Both placebo DiD coefficients should be insignificant.\n")
-cat("If significant, this undermines the credibility of the main result.\n")
+# Store p-values for summary
+p_placebo1 <- coeftest(model_placebo_time,
+                       vcov = vcovHC(model_placebo_time,
+                                     type = "HC3"))["did_placebo", 4]
+p_placebo2 <- coeftest(model_placebo_space,
+                       vcov = vcovHC(model_placebo_space,
+                                     type = "HC3"))["did_placebo", 4]
+
+
+# ============================================================
+# 13. Wald Tests
+# Pre-2019 data: test if London trend differs from controls
+# Full sample: test if DiD coefficient is zero
+# ============================================================
+
+# Test 1: Pre-trends
+# In pre-2019 data post=0 and did=0 always, so we test whether
+# London's time trend differs from controls before ULEZ
+df_pre    <- df_did %>% filter(Year < 2019)
+model_pre <- lm(CycleTraffic_bn ~ treated + Year + treated:Year,
+                data = df_pre)
+
+cat("\n========== WALD TEST 1: Pre-Trends ==========\n")
+cat("H0: treated:Year = 0 (London trend same as controls pre-2019)\n")
+cat("Failure to reject (p > 0.05) = parallel trends supported\n\n")
+wald_pre <- linearHypothesis(model_pre, "treated:Year = 0",
+                             vcov = vcovHC(model_pre, type = "HC3"))
+print(wald_pre)
+
+# Test 2: Post-policy effect on full sample
+cat("\n========== WALD TEST 2: Post-Policy Effect ==========\n")
+cat("H0: DiD = 0 on full sample\n")
+cat("Rejection (p < 0.05) = significant post-ULEZ cycling effect\n\n")
+wald_post <- linearHypothesis(model1, "did = 0",
+                              vcov = vcovHC(model1, type = "HC3"))
+print(wald_post)
+
+cat("\n--- Summary ---\n")
+cat("Pre-trends Wald p-value:  ", round(wald_pre$`Pr(>F)`[2],  4), "\n")
+cat("Post-policy Wald p-value: ", round(wald_post$`Pr(>F)`[2], 4), "\n")
+cat("Placebo 1 (fake 2015) p:  ", round(p_placebo1, 4), "\n")
+cat("Placebo 2 (fake NW) p:    ", round(p_placebo2, 4), "\n")
+
 
 # ============================================================
 # Done
@@ -433,3 +465,5 @@ cat("  - cycling_did_results_HC3.txt\n")
 cat("  - cycling_did_results_CR2.txt\n")
 cat("  - cycling_se_comparison.txt\n")
 cat("  - cycling_summary_stats.txt\n")
+
+
