@@ -273,10 +273,10 @@ coefplot::coefplot(eventmodel,
                      ifelse(grepl("\\.1$", clean), clean, "")
                    }) + 
   
-  labs(title="NO2 Event(2019.2) Study (Yearly Ticks),HC3(Jacknife)SE",
+  labs(title="NO2 Event(2019.2) Study (Yearly Ticks), Uncorrected SE",
        x="Estimate", y="Year (Q1 Marked)") +
   theme_gray()
-modelplot(eventmodel,vcov = hcr_vcov,coef_omit = "^(?!.*treatment:)",color="darkblue")+geom_vline(xintercept=0)+labs(title="NO2 Event(2019.2) Study,HC3(Jacknife) Corrected SE")+theme_classic()+ geom_hline(yintercept ="treatment:yr_qtr2019.2",linetype = "dashed", colour = "red")
+modelplot(eventmodel,vcov = hcr_vcov,coef_omit = "^(?!.*treatment:)",color="darkblue")+geom_vline(xintercept=0)+labs(title="NO2 Event(2019.2) Study,HC3(Jacknife) Corrected SE")+theme_classic()+ geom_hline(yintercept ="treatment:yr_qtr2019.2",linetype = "dashed", colour = "red")+coord_flip()+theme(axis.text.x = element_text(angle = 90))
 #Stargazer Tables with Jacknife and Clustered SE#
 aic_row <- c("AIC", round(AIC(eventmodel), 2), round(AIC(hetmodel), 2), round(AIC(reducedmodel), 2))
 bic_row <- c("BIC", round(BIC(eventmodel), 2), round(BIC(hetmodel), 2), round(BIC(reducedmodel), 2))
