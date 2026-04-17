@@ -49,7 +49,7 @@ coefplot::coefplot(eventmodel,
   labs(title="NO2 Event(2019.2) Study (Yearly Ticks),WildCluster(City) Corrected SE",
        x="Estimate", y="Year (Q1 Marked)") +
   theme_gray()
-modelplot(eventmodel,vcov = wild_se_event,coef_omit = "^(?!.*treatment:)",color="darkblue")+geom_vline(xintercept=0)+labs(title="NO2 Event(2019.2) Study,WildBootCluster(City) Corrected SE")+theme_classic() + geom_hline(yintercept ="treatment:yr_qtr2019.2",linetype = "dashed", colour = "red")
+modelplot(eventmodel,vcov = wild_se_event,coef_omit = "^(?!.*treatment:)",color="darkblue")+geom_vline(xintercept=0)+labs(title="NO2 Event(2019.2) Study,WildBootCluster(City) Corrected SE")+theme_classic() + geom_hline(yintercept ="treatment:yr_qtr2019.2",linetype = "dashed", colour = "red")+coord_flip()+theme(axis.text.x = element_text(angle = 90))
 stargazer(eventmodel,eventmodel, eventmodel,eventmodel,
           se = list(wild_se_event,sqrt(diag(cluster_vcov)), sqrt(diag(hcr_vcov)),sqrt(diag(cluster_vcovc))), 
           column.labels = c("WildBoot City","Small-Cluster Station (CR2)", "Leverage-Corr (HC3)","City(CR2)"),
