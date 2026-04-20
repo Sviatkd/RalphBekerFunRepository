@@ -1,7 +1,11 @@
 # ============================================================
 # Cycling Demand - Difference-in-Differences (DiD) Analysis
 # TRA0403: Pedal cycle traffic (billion vehicle miles)
-# Treatment: London | Controls: North West, Scotland
+# Treatment: London
+# Controls: Greater Manchester FMC, West Midlands FMC,
+#           Tyne and Wear FMC, West Yorkshire FMC,
+#           South Yorkshire FMC, Scotland
+# These match the air quality control cities exactly
 # Policy cutoff: 2019 (ULEZ)
 # SE: HC3 Jackknife (primary) + CR2 Region-clustered (robustness)
 # ============================================================
@@ -38,7 +42,7 @@ library(car)
 # 2. Load Data
 # ============================================================
 
-setwd("C:/Users/kalid/OneDrive/Desktop/New folder")
+setwd(".")  # Change to your folder path if needed
 
 raw <- read_ods("tra0403-miles-pedal-cycle-traffic-by-region.ods",
                 sheet = "TRA0403",
@@ -55,14 +59,42 @@ colnames(raw)[3] <- "Notes"
 colnames(raw)[4] <- "Units"
 colnames(raw)[5:ncol(raw)] <- as.character(1993:2024)
 
-regions_keep <- c("London", "North West", "Scotland")
+# Keep London (treated) + 5 FMC controls + Scotland
+# FMCs match air quality control cities exactly
+controls_keep <- c(
+  "Greater Manchester FMC",
+  "West Midlands FMC",
+  "Tyne and Wear FMC",
+  "West Yorkshire FMC",
+  "South Yorkshire FMC",
+  "Scotland All"
+)
 
 df_wide <- raw %>%
-  filter(Region %in% regions_keep,
-         grepl("All", Subarea, ignore.case = TRUE)) %>%
-  select(Region, all_of(as.character(1993:2024))) %>%
-  mutate(across(as.character(1993:2024), as.numeric))
+  filter(
+    # London treated
+    (Region == "London" & grepl("All", Subarea, ignore.case = TRUE)) |
+    # FMC controls
+    trimws(Subarea) %in% controls_keep
+  ) %>%
+  select(Region, Subarea, all_of(as.character(1993:2024))) %>%
+  mutate(across(as.character(1993:2024), as.numeric)) %>%
+  mutate(
+    # Clean label for each unit
+    Unit = case_when(
+      Region == "London"                                   ~ "London",
+      trimws(Subarea) == "Greater Manchester FMC"          ~ "Greater Manchester",
+      trimws(Subarea) == "West Midlands FMC"               ~ "West Midlands",
+      trimws(Subarea) == "Tyne and Wear FMC"               ~ "Tyne and Wear",
+      trimws(Subarea) == "West Yorkshire FMC"              ~ "West Yorkshire",
+      trimws(Subarea) == "South Yorkshire FMC"             ~ "South Yorkshire",
+      trimws(Subarea) == "Scotland All"                    ~ "Scotland",
+      TRUE ~ Subarea
+    )
+  ) %>%
+  select(Unit, all_of(as.character(1993:2024)))
 
+# Pivot to long format
 df_long <- df_wide %>%
   pivot_longer(cols      = as.character(1993:2024),
                names_to  = "Year",
@@ -77,7 +109,7 @@ df_long <- df_wide %>%
 
 df_did <- df_long %>%
   mutate(
-    treated   = if_else(Region == "London", 1L, 0L),
+    treated   = if_else(Unit == "London", 1L, 0L),
     post      = if_else(Year >= 2019, 1L, 0L),
     did       = treated * post,
     log_cycle = log(CycleTraffic_bn)
@@ -88,12 +120,9 @@ df_did <- df_long %>%
 # 5. Summary Statistics
 # ============================================================
 
-cat("\n========== FULL SUMMARY ==========\n")
-skim(df_did)
-
-cat("\n========== BY REGION ==========\n")
+cat("\n========== BY UNIT ==========\n")
 df_did %>%
-  group_by(Region) %>%
+  group_by(Unit) %>%
   summarise(
     Mean = round(mean(CycleTraffic_bn, na.rm = TRUE), 3),
     SD   = round(sd(CycleTraffic_bn,   na.rm = TRUE), 3),
@@ -104,19 +133,19 @@ df_did %>%
 
 cat("\n========== PRE vs POST 2019 ==========\n")
 df_did %>%
-  group_by(Region, post) %>%
+  group_by(Unit, post) %>%
   summarise(
     Mean = round(mean(CycleTraffic_bn, na.rm = TRUE), 3),
     SD   = round(sd(CycleTraffic_bn,   na.rm = TRUE), 3),
     N    = n(), .groups = "drop"
   ) %>%
   mutate(Period = if_else(post == 1, "Post-2019", "Pre-2019")) %>%
-  select(Region, Period, Mean, SD, N) %>% print()
+  select(Unit, Period, Mean, SD, N) %>% print()
 
 cat("\n========== ULEZ STYLE SUMMARY ==========\n")
 cycling_stats <- df_did %>%
   mutate(ULEZ = if_else(post == 1, "Post-ULEZ", "Pre-ULEZ")) %>%
-  group_by(Region, ULEZ) %>%
+  group_by(Unit, ULEZ) %>%
   summarise(
     Mean   = round(mean(CycleTraffic_bn,   na.rm = TRUE), 3),
     Median = round(median(CycleTraffic_bn, na.rm = TRUE), 3),
@@ -124,88 +153,66 @@ cycling_stats <- df_did %>%
     IQR    = round(IQR(CycleTraffic_bn,    na.rm = TRUE), 3),
     .groups = "drop"
   ) %>%
-  rename(Mode = Region) %>%
+  rename(Mode = Unit) %>%
   arrange(Mode, desc(ULEZ))
 print(cycling_stats)
 
-sink("cycling_summary_stats.txt")
-skim(df_did)
-df_did %>%
-  group_by(Region) %>%
-  summarise(Mean = round(mean(CycleTraffic_bn, na.rm=TRUE), 3),
-            SD   = round(sd(CycleTraffic_bn,   na.rm=TRUE), 3),
-            Min  = round(min(CycleTraffic_bn,  na.rm=TRUE), 3),
-            Max  = round(max(CycleTraffic_bn,  na.rm=TRUE), 3),
-            N    = n()) %>% print()
-df_did %>%
-  group_by(Region, post) %>%
-  summarise(Mean = round(mean(CycleTraffic_bn, na.rm=TRUE), 3),
-            SD   = round(sd(CycleTraffic_bn,   na.rm=TRUE), 3),
-            N    = n(), .groups="drop") %>%
-  mutate(Period = if_else(post==1, "Post-2019", "Pre-2019")) %>%
-  select(Region, Period, Mean, SD, N) %>% print()
-print(cycling_stats)
-sink()
-
 
 # ============================================================
-# 6. Parallel Trends Plot (pre-2019 only)
+# 6. Parallel Trends Plot (pre-2019)
 # ============================================================
 
 pre_trends <- df_did %>%
   filter(Year <= 2019) %>%
   ggplot(aes(x = Year, y = CycleTraffic_bn,
-             colour = Region, group = Region)) +
-  geom_line(linewidth = 1.1) +
-  geom_point(size = 2) +
-  geom_vline(xintercept = 2019, linetype = "dashed", colour = "black") +
-  annotate("text", x = 2019.3, y = 0.85,
-           label = "ULEZ 2019", hjust = 0, size = 3.5) +
-  scale_colour_manual(values = c("London"     = "#1f77b4",
-                                 "North West" = "#ff7f0e",
-                                 "Scotland"   = "#2ca02c")) +
-  labs(title    = "Parallel Trends Check - Cycle Traffic (Pre-2019)",
-       subtitle = "Billion vehicle miles by region, annual",
-       x = "Year", y = "Cycle Traffic (Billion Vehicle Miles)",
-       colour = "Region") +
-  theme_minimal(base_size = 13) +
-  theme(legend.position = "bottom")
-
-print(pre_trends)
-ggsave("cycling_parallel_trends.png", pre_trends, width = 9, height = 5.5, dpi = 150)
-
-
-# ============================================================
-# 7. Full Time Series Plot (1993-2024)
-# ============================================================
-
-full_plot <- df_did %>%
-  ggplot(aes(x = Year, y = CycleTraffic_bn,
-             colour = Region, group = Region)) +
-  geom_line(linewidth = 1.1) +
+             colour = Unit, group = Unit)) +
+  geom_line(linewidth = 1.0) +
   geom_point(size = 2) +
   geom_vline(xintercept = 2019, linetype = "dashed", colour = "black") +
   annotate("text", x = 2019.3,
            y = max(df_did$CycleTraffic_bn, na.rm = TRUE) * 0.95,
-           label = "ULEZ 2019", hjust = 0, size = 3.5) +
-  scale_colour_manual(values = c("London"     = "#1f77b4",
-                                 "North West" = "#ff7f0e",
-                                 "Scotland"   = "#2ca02c")) +
-  labs(title    = "Cycle Traffic Miles by Region (1993-2024)",
+           label = "ULEZ 2019", hjust = 0, size = 3.2) +
+  labs(title    = "Parallel Trends Check - Cycle Traffic (Pre-2019)",
+       subtitle = "London vs FMC control cities, billion vehicle miles",
+       x = "Year", y = "Cycle Traffic (Billion Vehicle Miles)",
+       colour = "Unit") +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "bottom")
+
+print(pre_trends)
+ggsave("cycling_parallel_trends_FMC.png", pre_trends,
+       width = 10, height = 5.5, dpi = 150)
+
+
+# ============================================================
+# 7. Full Time Series Plot
+# ============================================================
+
+full_plot <- df_did %>%
+  ggplot(aes(x = Year, y = CycleTraffic_bn,
+             colour = Unit, group = Unit)) +
+  geom_line(linewidth = 1.0) +
+  geom_point(size = 2) +
+  geom_vline(xintercept = 2019, linetype = "dashed", colour = "black") +
+  annotate("text", x = 2019.3,
+           y = max(df_did$CycleTraffic_bn, na.rm = TRUE) * 0.95,
+           label = "ULEZ 2019", hjust = 0, size = 3.2) +
+  labs(title    = "Cycle Traffic Miles - London vs FMC Controls (1993-2024)",
        subtitle = "Billion vehicle miles, annual",
        x = "Year", y = "Cycle Traffic (Billion Vehicle Miles)",
-       colour = "Region") +
+       colour = "Unit") +
   theme_minimal(base_size = 13) +
   theme(legend.position = "bottom")
 
 print(full_plot)
-ggsave("cycling_full_timeseries.png", full_plot, width = 9, height = 5.5, dpi = 150)
+ggsave("cycling_full_timeseries_FMC.png", full_plot,
+       width = 10, height = 5.5, dpi = 150)
 
 
 # ============================================================
 # 8. DiD Models
-# Four specs: levels and log, with and without COVID years
-# HC3 Jackknife SEs (primary) + CR2 Region-clustered (robustness)
+# HC3 Jackknife (primary) + CR2 clustered at Unit level (robustness)
+# Note: 7 units now vs 3 before - clustering more reliable
 # ============================================================
 
 model1 <- lm(CycleTraffic_bn ~ treated + post + did, data = df_did)
@@ -220,14 +227,14 @@ se2_hc3 <- sqrt(diag(vcovHC(model2, type = "HC3")))
 se3_hc3 <- sqrt(diag(vcovHC(model3, type = "HC3")))
 se4_hc3 <- sqrt(diag(vcovHC(model4, type = "HC3")))
 
-cluster_se1 <- sqrt(diag(vcovCR(model1, cluster = df_did$Region,      type = "CR2")))
-cluster_se2 <- sqrt(diag(vcovCR(model2, cluster = df_did$Region,      type = "CR2")))
-cluster_se3 <- sqrt(diag(vcovCR(model3, cluster = df_no_covid$Region, type = "CR2")))
-cluster_se4 <- sqrt(diag(vcovCR(model4, cluster = df_no_covid$Region, type = "CR2")))
+cluster_se1 <- sqrt(diag(vcovCR(model1, cluster = df_did$Unit,      type = "CR2")))
+cluster_se2 <- sqrt(diag(vcovCR(model2, cluster = df_did$Unit,      type = "CR2")))
+cluster_se3 <- sqrt(diag(vcovCR(model3, cluster = df_no_covid$Unit, type = "CR2")))
+cluster_se4 <- sqrt(diag(vcovCR(model4, cluster = df_no_covid$Unit, type = "CR2")))
 
 
 # ============================================================
-# 9. Print Regression Results
+# 9. Print Results
 # ============================================================
 
 cat("\n========== MODEL 1: Levels (HC3) ==========\n")
@@ -245,41 +252,26 @@ print(coeftest(model4, vcov = vcovHC(model4, type = "HC3")))
 stargazer(model1, model2, model3, model4,
           se               = list(se1_hc3, se2_hc3, se3_hc3, se4_hc3),
           type             = "text",
-          title            = "DiD Estimates - Cycling Demand (HC3 Jackknife SE)",
+          title            = "DiD - Cycling Demand with FMC Controls (HC3 SE)",
           dep.var.labels   = c("Cycle Traffic (bn miles)", "Log Cycle Traffic",
                                "Cycle Traffic (no COVID)", "Log Cycle Traffic (no COVID)"),
           covariate.labels = c("London (Treated)", "Post-2019",
                                "DiD (Treated x Post)", "Constant"),
           omit.stat        = c("f", "ser"),
           digits           = 4,
-          out              = "cycling_did_results_HC3.txt")
+          out              = "cycling_did_FMC_HC3.txt")
 
 stargazer(model1, model2, model3, model4,
           se               = list(cluster_se1, cluster_se2, cluster_se3, cluster_se4),
           type             = "text",
-          title            = "DiD Estimates - Cycling Demand (CR2 Clustered SE by Region)",
+          title            = "DiD - Cycling Demand with FMC Controls (CR2 Clustered SE)",
           dep.var.labels   = c("Cycle Traffic (bn miles)", "Log Cycle Traffic",
                                "Cycle Traffic (no COVID)", "Log Cycle Traffic (no COVID)"),
           covariate.labels = c("London (Treated)", "Post-2019",
                                "DiD (Treated x Post)", "Constant"),
           omit.stat        = c("f", "ser"),
           digits           = 4,
-          out              = "cycling_did_results_CR2.txt")
-
-stargazer(model1, model1,
-          se               = list(se1_hc3, cluster_se1),
-          type             = "text",
-          title            = "SE Method Comparison - DiD Levels Model",
-          column.labels    = c("HC3 Jackknife", "CR2 Clustered by Region"),
-          add.lines        = list(
-            c("SE Method",     "HC3 Jackknife",  "CR2 Clustered"),
-            c("Cluster Level", "None",           "Region (G=3)")
-          ),
-          covariate.labels = c("London (Treated)", "Post-2019",
-                               "DiD (Treated x Post)", "Constant"),
-          omit.stat        = c("f", "ser"),
-          digits           = 4,
-          out              = "cycling_se_comparison.txt")
+          out              = "cycling_did_FMC_CR2.txt")
 
 
 # ============================================================
@@ -310,18 +302,18 @@ coef_plot <- ggplot(did_coefs,
                         ymin = CI_lo, ymax = CI_hi)) +
   geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
   geom_pointrange(colour = "#1f77b4", size = 0.9, linewidth = 1) +
-  labs(title    = "DiD Coefficient - Effect of ULEZ on London Cycling Demand",
+  labs(title    = "DiD Coefficient - ULEZ Effect on London Cycling (FMC Controls)",
        subtitle = "95% CI with HC3 Jackknife Standard Errors",
        x = "Model Specification",
        y = "DiD Estimate (Treated x Post)") +
   theme_minimal(base_size = 13)
 
 print(coef_plot)
-ggsave("cycling_did_coefplot.png", coef_plot, width = 8, height = 5, dpi = 150)
+ggsave("cycling_did_coefplot_FMC.png", coef_plot, width = 8, height = 5, dpi = 150)
 
 
 # ============================================================
-# 11. Event Study (year-by-year treatment effects, HC3)
+# 11. Event Study
 # ============================================================
 
 df_event <- df_did %>%
@@ -366,20 +358,18 @@ event_plot <- ggplot(event_df,
   annotate("text", x = 2019.2,
            y = max(event_df$CI_hi, na.rm = TRUE) * 0.9,
            label = "ULEZ ->", colour = "red", size = 3.5) +
-  labs(title    = "Event Study - London Cycling Demand vs Control",
-       subtitle = "Year-by-year DiD coefficients (base year = 2018), HC3 Jackknife SE",
+  labs(title    = "Event Study - London Cycling vs FMC Controls",
+       subtitle = "Year-by-year DiD coefficients (base year = 2018), HC3 SE",
        x = "Year",
        y = "Estimated Treatment Effect (bn vehicle miles)") +
   theme_minimal(base_size = 13)
 
 print(event_plot)
-ggsave("cycling_event_study.png", event_plot, width = 10, height = 5.5, dpi = 150)
+ggsave("cycling_event_study_FMC.png", event_plot, width = 10, height = 5.5, dpi = 150)
 
 
 # ============================================================
-# 12. Placebo Tests (HC3)
-# Fake year (2015) and fake treatment region (North West)
-# Both DiD coefficients should be insignificant
+# 12. Placebo Tests
 # ============================================================
 
 df_placebo_time <- df_did %>%
@@ -396,51 +386,40 @@ cat("\n========== PLACEBO 1: Fake Policy Year 2015 ==========\n")
 print(coeftest(model_placebo_time, vcov = vcovHC(model_placebo_time, type = "HC3")))
 
 df_placebo_space <- df_did %>%
-  filter(Region != "London") %>%
+  filter(Unit != "London") %>%
   mutate(
-    treated_placebo = if_else(Region == "North West", 1L, 0L),
+    treated_placebo = if_else(Unit == "Greater Manchester", 1L, 0L),
     did_placebo     = treated_placebo * post
   )
 
 model_placebo_space <- lm(CycleTraffic_bn ~ treated_placebo + post + did_placebo,
                           data = df_placebo_space)
 
-cat("\n========== PLACEBO 2: Fake Treatment - North West ==========\n")
+cat("\n========== PLACEBO 2: Fake Treatment - Greater Manchester ==========\n")
 print(coeftest(model_placebo_space, vcov = vcovHC(model_placebo_space, type = "HC3")))
 
-# Store p-values for summary
 p_placebo1 <- coeftest(model_placebo_time,
-                       vcov = vcovHC(model_placebo_time,
-                                     type = "HC3"))["did_placebo", 4]
+                       vcov = vcovHC(model_placebo_time, type = "HC3"))["did_placebo", 4]
 p_placebo2 <- coeftest(model_placebo_space,
-                       vcov = vcovHC(model_placebo_space,
-                                     type = "HC3"))["did_placebo", 4]
+                       vcov = vcovHC(model_placebo_space, type = "HC3"))["did_placebo", 4]
 
 
 # ============================================================
 # 13. Wald Tests
-# Pre-2019 data: test if London trend differs from controls
-# Full sample: test if DiD coefficient is zero
 # ============================================================
 
-# Test 1: Pre-trends
-# In pre-2019 data post=0 and did=0 always, so we test whether
-# London's time trend differs from controls before ULEZ
 df_pre    <- df_did %>% filter(Year < 2019)
 model_pre <- lm(CycleTraffic_bn ~ treated + Year + treated:Year,
                 data = df_pre)
 
 cat("\n========== WALD TEST 1: Pre-Trends ==========\n")
-cat("H0: treated:Year = 0 (London trend same as controls pre-2019)\n")
-cat("Failure to reject (p > 0.05) = parallel trends supported\n\n")
+cat("H0: treated:Year = 0 (London trend same as FMC controls pre-2019)\n\n")
 wald_pre <- linearHypothesis(model_pre, "treated:Year = 0",
                              vcov = vcovHC(model_pre, type = "HC3"))
 print(wald_pre)
 
-# Test 2: Post-policy effect on full sample
 cat("\n========== WALD TEST 2: Post-Policy Effect ==========\n")
-cat("H0: DiD = 0 on full sample\n")
-cat("Rejection (p < 0.05) = significant post-ULEZ cycling effect\n\n")
+cat("H0: DiD = 0\n\n")
 wald_post <- linearHypothesis(model1, "did = 0",
                               vcov = vcovHC(model1, type = "HC3"))
 print(wald_post)
@@ -449,7 +428,7 @@ cat("\n--- Summary ---\n")
 cat("Pre-trends Wald p-value:  ", round(wald_pre$`Pr(>F)`[2],  4), "\n")
 cat("Post-policy Wald p-value: ", round(wald_post$`Pr(>F)`[2], 4), "\n")
 cat("Placebo 1 (fake 2015) p:  ", round(p_placebo1, 4), "\n")
-cat("Placebo 2 (fake NW) p:    ", round(p_placebo2, 4), "\n")
+cat("Placebo 2 (fake GM) p:    ", round(p_placebo2, 4), "\n")
 
 
 # ============================================================
@@ -457,13 +436,9 @@ cat("Placebo 2 (fake NW) p:    ", round(p_placebo2, 4), "\n")
 # ============================================================
 
 cat("\nDone! Files saved to:", getwd(), "\n")
-cat("  - cycling_parallel_trends.png\n")
-cat("  - cycling_full_timeseries.png\n")
-cat("  - cycling_did_coefplot.png\n")
-cat("  - cycling_event_study.png\n")
-cat("  - cycling_did_results_HC3.txt\n")
-cat("  - cycling_did_results_CR2.txt\n")
-cat("  - cycling_se_comparison.txt\n")
-cat("  - cycling_summary_stats.txt\n")
-
-
+cat("  - cycling_parallel_trends_FMC.png\n")
+cat("  - cycling_full_timeseries_FMC.png\n")
+cat("  - cycling_did_coefplot_FMC.png\n")
+cat("  - cycling_event_study_FMC.png\n")
+cat("  - cycling_did_FMC_HC3.txt\n")
+cat("  - cycling_did_FMC_CR2.txt\n")
