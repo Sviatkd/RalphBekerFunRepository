@@ -1,0 +1,5 @@
+library(ggdag)
+library(dagitty)
+library(dagR)
+dagmain <- dagify(PM10~Volume+Time+Region,NO2~Volume+Composition+Time+Region,Volume~ULEZ+Other+Time+Region,Composition~ULEZ+Time+Region,Other~Time+Region+ULEZ,ULEZ~Time+Region)
+ggdag_adjustment_set(dagmain,exposure = c("ULEZ"),outcome = c("PM10","NO2"))
