@@ -229,6 +229,47 @@ ggsave("cycling_its_plot_nocovid.png", its_plot_nc, width = 10, height = 5.5, dp
 
 
 # ============================================================
+# 8. Combined Comparison Plot - Full Sample vs COVID Excluded
+# Both versions side by side in one figure using facet_wrap
+# ============================================================
+
+# Build combined dataset with a label for each version
+df_combined <- bind_rows(
+  df_london %>%
+    mutate(Version = "Full Sample"),
+  df_no_covid %>%
+    mutate(Version = "COVID Excluded (2020-2021 removed)")
+)
+
+# Counterfactual for each version
+cf_full    <- coef(its1)["(Intercept)"] + coef(its1)["time"] * df_london$time
+cf_nocovid <- coef(its3)["(Intercept)"] + coef(its3)["time"] * df_no_covid$time
+
+df_combined <- df_combined %>%
+  mutate(counterfact = c(cf_full, cf_nocovid))
+
+combined_plot <- ggplot(df_combined, aes(x = Year)) +
+  geom_point(aes(y = CycleTraffic_bn), colour = "#1f77b4", size = 2) +
+  geom_line(aes(y = fitted), colour = "#1f77b4", linewidth = 1.1) +
+  geom_line(aes(y = counterfact), colour = "grey50",
+            linetype = "dashed", linewidth = 1) +
+  geom_vline(xintercept = 2019, linetype = "dotted",
+             colour = "red", linewidth = 0.9) +
+  annotate("text", x = 2019.3, y = 0.66,
+           label = "ULEZ 2019", colour = "red", hjust = 0, size = 3.2) +
+  facet_wrap(~Version) +
+  labs(title    = "ITS Model - London Cycling: Full Sample vs COVID Excluded",
+       subtitle = "Solid = fitted ITS | Dashed = pre-policy counterfactual trend",
+       x = "Year", y = "Cycle Traffic (Billion Vehicle Miles)") +
+  theme_minimal(base_size = 12) +
+  theme(strip.text = element_text(face = "bold", size = 11))
+
+print(combined_plot)
+ggsave("cycling_its_comparison.png", combined_plot,
+       width = 13, height = 5.5, dpi = 150)
+
+
+# ============================================================
 # Done
 # ============================================================
 
@@ -237,3 +278,5 @@ cat("  - cycling_its_levels_comparison.txt\n")
 cat("  - cycling_its_log_comparison.txt\n")
 cat("  - cycling_its_plot.png\n")
 cat("  - cycling_its_plot_nocovid.png\n")
+cat("  - cycling_its_comparison.png\n")
+
