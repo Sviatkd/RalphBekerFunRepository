@@ -80,36 +80,47 @@ its2 <- lm(log_cycle       ~ time + ulez + ulez_time, data = df_london)
 its3 <- lm(CycleTraffic_bn ~ time + ulez + ulez_time, data = df_no_covid)
 its4 <- lm(log_cycle       ~ time + ulez + ulez_time, data = df_no_covid)
 
-# HC3 SEs
-se1 <- sqrt(diag(vcovHC(its1, type = "HC3")))
-se2 <- sqrt(diag(vcovHC(its2, type = "HC3")))
-se3 <- sqrt(diag(vcovHC(its3, type = "HC3")))
-se4 <- sqrt(diag(vcovHC(its4, type = "HC3")))
+# HAC (Newey-West) SEs
+# ITS is a single time series — serial correlation is the main concern
+# HAC corrects for both heteroskedasticity AND autocorrelation
+# lag = floor(T^(1/3)) is the standard automatic lag selection rule
+# Full sample T=32: lag=3; No COVID T=30: lag=3
+hac_lag_full   <- floor(nrow(df_london)   ^ (1/3))
+hac_lag_nocovid <- floor(nrow(df_no_covid) ^ (1/3))
+
+se1 <- sqrt(diag(NeweyWest(its1, lag = hac_lag_full,    prewhite = FALSE)))
+se2 <- sqrt(diag(NeweyWest(its2, lag = hac_lag_full,    prewhite = FALSE)))
+se3 <- sqrt(diag(NeweyWest(its3, lag = hac_lag_nocovid, prewhite = FALSE)))
+se4 <- sqrt(diag(NeweyWest(its4, lag = hac_lag_nocovid, prewhite = FALSE)))
+
+cat("\nHAC lag (full sample):", hac_lag_full, "\n")
+cat("HAC lag (no COVID):   ", hac_lag_nocovid, "\n")
 
 
 # ============================================================
 # 4. Print Results
 # ============================================================
 
-cat("\n========== ITS MODEL 1: Levels - Full Sample (HC3) ==========\n")
-print(coeftest(its1, vcov = vcovHC(its1, type = "HC3")))
+cat("\n========== ITS MODEL 1: Levels - Full Sample (HAC Newey-West) ==========\n")
+print(coeftest(its1, vcov = NeweyWest(its1, lag = hac_lag_full, prewhite = FALSE)))
 
-cat("\n========== ITS MODEL 2: Log Levels - Full Sample (HC3) ==========\n")
-print(coeftest(its2, vcov = vcovHC(its2, type = "HC3")))
+cat("\n========== ITS MODEL 2: Log Levels - Full Sample (HAC Newey-West) ==========\n")
+print(coeftest(its2, vcov = NeweyWest(its2, lag = hac_lag_full, prewhite = FALSE)))
 
-cat("\n========== ITS MODEL 3: Levels - No COVID (HC3) ==========\n")
-print(coeftest(its3, vcov = vcovHC(its3, type = "HC3")))
+cat("\n========== ITS MODEL 3: Levels - No COVID (HAC Newey-West) ==========\n")
+print(coeftest(its3, vcov = NeweyWest(its3, lag = hac_lag_nocovid, prewhite = FALSE)))
 
-cat("\n========== ITS MODEL 4: Log Levels - No COVID (HC3) ==========\n")
-print(coeftest(its4, vcov = vcovHC(its4, type = "HC3")))
+cat("\n========== ITS MODEL 4: Log Levels - No COVID (HAC Newey-West) ==========\n")
+print(coeftest(its4, vcov = NeweyWest(its4, lag = hac_lag_nocovid, prewhite = FALSE)))
 
 # Full sample vs No COVID side by side (levels)
 stargazer(its1, its3,
           se            = list(se1, se3),
           type          = "text",
-          title         = "ITS - London Cycling: Full Sample vs No COVID (Levels, HC3)",
+          title         = "ITS - London Cycling: Full Sample vs No COVID (Levels, HAC Newey-West SE)",
           column.labels = c("Full Sample", "COVID Excluded"),
-          add.lines     = list(c("COVID years", "Included", "Excluded (2020-2021)")),
+          add.lines     = list(c("SE Method", "HAC Newey-West", "HAC Newey-West"),
+                               c("COVID years", "Included", "Excluded (2020-2021)")),
           covariate.labels = c("Time Trend", "ULEZ Level Change",
                                "ULEZ Slope Change", "Constant"),
           omit.stat     = c("f", "ser"),
@@ -120,9 +131,10 @@ stargazer(its1, its3,
 stargazer(its2, its4,
           se            = list(se2, se4),
           type          = "text",
-          title         = "ITS - London Cycling: Full Sample vs No COVID (Log, HC3)",
+          title         = "ITS - London Cycling: Full Sample vs No COVID (Log, HAC Newey-West SE)",
           column.labels = c("Full Sample", "COVID Excluded"),
-          add.lines     = list(c("COVID years", "Included", "Excluded (2020-2021)")),
+          add.lines     = list(c("SE Method", "HAC Newey-West", "HAC Newey-West"),
+                               c("COVID years", "Included", "Excluded (2020-2021)")),
           covariate.labels = c("Time Trend", "ULEZ Level Change",
                                "ULEZ Slope Change", "Constant"),
           omit.stat     = c("f", "ser"),
@@ -131,33 +143,41 @@ stargazer(its2, its4,
 
 
 # ============================================================
-# 5. Wald Tests (on full sample model)
+# 5. Wald Tests — all use HAC vcov
 # ============================================================
 
-cat("\n========== WALD TEST 1: Joint Effect (level + slope) ==========\n")
+cat("\n========== WALD TEST 1: Joint Effect (level + slope) — HAC ==========\n")
 cat("H0: ulez = 0 AND ulez_time = 0\n")
 cat("Rejection = ULEZ had some effect on cycling\n\n")
 wald_joint <- linearHypothesis(its1,
                                c("ulez = 0", "ulez_time = 0"),
-                               vcov = vcovHC(its1, type = "HC3"))
+                               vcov = NeweyWest(its1, lag = hac_lag_full, prewhite = FALSE))
 print(wald_joint)
 
-cat("\n========== WALD TEST 2: Slope Change ==========\n")
+cat("\n========== WALD TEST 2: Slope Change — HAC ==========\n")
 cat("H0: ulez_time = 0 (no change in trend after ULEZ)\n\n")
 wald_slope <- linearHypothesis(its1, "ulez_time = 0",
-                               vcov = vcovHC(its1, type = "HC3"))
+                               vcov = NeweyWest(its1, lag = hac_lag_full, prewhite = FALSE))
 print(wald_slope)
 
-cat("\n========== WALD TEST 3: Level Change ==========\n")
+cat("\n========== WALD TEST 3: Level Change — HAC ==========\n")
 cat("H0: ulez = 0 (no immediate jump at ULEZ)\n\n")
 wald_level <- linearHypothesis(its1, "ulez = 0",
-                               vcov = vcovHC(its1, type = "HC3"))
+                               vcov = NeweyWest(its1, lag = hac_lag_full, prewhite = FALSE))
 print(wald_level)
 
-cat("\n--- Wald Test Summary ---\n")
-cat("Joint (level + slope) p: ", round(wald_joint$`Pr(>F)`[2], 4), "\n")
-cat("Slope change p:           ", round(wald_slope$`Pr(>F)`[2], 4), "\n")
-cat("Level change p:           ", round(wald_level$`Pr(>F)`[2], 4), "\n")
+# Also run on no-COVID model (more credible)
+cat("\n========== WALD TEST 4: Slope Change No COVID — HAC (primary result) ==========\n")
+cat("H0: ulez_time = 0 on COVID-excluded model\n\n")
+wald_slope_nc <- linearHypothesis(its3, "ulez_time = 0",
+                                  vcov = NeweyWest(its3, lag = hac_lag_nocovid, prewhite = FALSE))
+print(wald_slope_nc)
+
+cat("\n--- Wald Test Summary (HAC Newey-West throughout) ---\n")
+cat("Joint (level + slope) p:         ", round(wald_joint$`Pr(>F)`[2],    4), "\n")
+cat("Slope change (full sample) p:    ", round(wald_slope$`Pr(>F)`[2],    4), "\n")
+cat("Level change p:                  ", round(wald_level$`Pr(>F)`[2],    4), "\n")
+cat("Slope change (no COVID) p:       ", round(wald_slope_nc$`Pr(>F)`[2], 4), "\n")
 
 
 # ============================================================
@@ -279,4 +299,3 @@ cat("  - cycling_its_log_comparison.txt\n")
 cat("  - cycling_its_plot.png\n")
 cat("  - cycling_its_plot_nocovid.png\n")
 cat("  - cycling_its_comparison.png\n")
-
