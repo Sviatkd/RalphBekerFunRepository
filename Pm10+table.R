@@ -16,7 +16,7 @@ no2quarterly <- Rawdata %>%
   # Returns numeric year.quarter (e.g., 2024.1)
   mutate(yr_qtr = quarter(date, with_year = TRUE)) %>% 
   group_by(yr_qtr,Station) %>%
-  summarise(mean_value = mean(no2, na.rm = TRUE))
+  summarise(mean_value = mean(pm10, na.rm = TRUE))
 no2quarterly <- no2quarterly %>%
   mutate(
     pct_changepol = (mean_value - lag(mean_value)) / lag(mean_value) * 100
@@ -48,7 +48,7 @@ FullDataset <- bind_rows(Rawdata, AllStationsData)
 no2quarterly <- FullDataset %>%
   mutate(yr_qtr = quarter(date, with_year = TRUE)) %>% 
   group_by(yr_qtr, Station) %>%
-  summarise(mean_value = mean(no2, na.rm = TRUE), .groups = "drop") %>%
+  summarise(mean_value = mean(pm10, na.rm = TRUE), .groups = "drop") %>%
   arrange(Station, yr_qtr) %>%
   group_by(Station) %>%
   mutate(
@@ -77,8 +77,7 @@ treatment <- c(
   "camden-- euston road", 
   "london-bloomsbury", 
   "LondonC", 
-  "LondonMR", 
-  "LondonW" 
+  "LondonMR"
 )
 
 control <- c(
@@ -255,10 +254,7 @@ treatment_control_df$yr_qtr <- as.factor(treatment_control_df$yr_qtr)
 treatment_control_df$City <- as.factor(treatment_control_df$City)
 treatment_control_df$did <-as.factor(treatment_control_df$did)
 reducedmodel <- lm(mean_value~did+yr_qtr+Station,data=treatment_control_df)
-treatment_control_df$ulez_id <- ifelse(treatment_control_df$did == 1, 
-                                       as.character(treatment_control_df$Station), 
-                                       "Control")
-hetmodel <- lm(mean_value~did+did:Station+yr_qtr+Station,data=treatment_control_df)
+hetmodel <- lm(mean_value~did:Station+yr_qtr+Station,data=treatment_control_df)
 eventmodel <- lm(mean_value~treatment*yr_qtr+Station,data=treatment_control_df)
 #Estimating clustered and Jacknife robust se matrices#
 hcr_vcov <- vcovHC(eventmodel,type = "HC3")
@@ -272,7 +268,7 @@ all_coefs <- names(coef(eventmodel))
 qtr_coefs <- all_coefs[grep("treatment:yr_qtr", all_coefs)]
 qtr_coefs <- qtr_coefs[order(gsub(".*\\)", "", qtr_coefs))]
 modelplot(eventmodel,vcov = hcr_vcov,coef_omit = "^(?!.*treatment:)",color="darkblue")+geom_vline(xintercept=0)+labs(title="Event(2019.2) No2 Study,HC3(Jacknife) Corrected SE")+theme_classic()+ geom_hline(yintercept ="treatment:yr_qtr2019.2",linetype = "dashed", colour = "red")+coord_flip()+theme(axis.text.x = element_text(angle = 90))
-modelplot(hetmodel,vcov = hcr_vcovh,coef_omit = "^(?!did1)",color="darkgreen")+geom_vline(xintercept=0)+labs(title="Heterogenous(Station) Average ULEZ Effects")
+modelplot(hetmodel,vcov = hcr_vcovh,coef_omit = "^(?!did1:)",color="darkgreen")+geom_vline(xintercept=0)+labs(title="Heterogenous(Station) Average ULEZ Effects")
 modelplot(eventmodel,vcov = cluster_vcov,coef_omit = "^(?!.*treatment:)",color="darkblue")+geom_vline(xintercept=0)+labs(title="Event(2019.2) No2 Study,Cluster(Station) Corrected SE")+theme_classic()+ geom_hline(yintercept ="treatment:yr_qtr2019.2",linetype = "dashed", colour = "red")+coord_flip()+theme(axis.text.x = element_text(angle = 90))
 modelplot(hetmodel,vcov = cluster_vcovh,coef_omit = "^(?!did1:)",color="darkgreen")+geom_vline(xintercept=0)+labs(title="Heterogenous(Station) Average ULEZ Effects")
 #Stargazer Tables with Jacknife and Clustered SE#
@@ -291,12 +287,12 @@ stargazer(eventmodel, eventmodel,
           add.lines = list(
             c("Clustering", "Station" ,"None (Jacknife)"),
             c("Robustness", "Small-G(15) Adj", "Leverage Adj"),
-          # "n" omits the observation count
-          omit.stat = c("f", "ser", "rsq", "adj.rsq", "n"),
-          header = FALSE,
-          type = "text",
-          title = "Comparison of Robust Inference Methods (Event Model)",
-          omit = c("^Station", "^yr_qtr")))
+            # "n" omits the observation count
+            omit.stat = c("f", "ser", "rsq", "adj.rsq", "n"),
+            header = FALSE,
+            type = "text",
+            title = "Comparison of Robust Inference Methods (Event Model)",
+            omit = c("^Station", "^yr_qtr")))
 #Wald Tests#
 # Get clean coefficients (no NAs)
 betas_event <- na.omit(coef(eventmodel))
@@ -306,7 +302,7 @@ pre_indices <- which(grepl("treatment:yr_qtr201[4-8]", names(betas_event)) |
 
 # 1. Identify Pre-Policy indices (2014.1 through 2018.4)
 pre_indicesant <- which(grepl("treatment:yr_qtr201[4-8]", names(betas_event)) | 
-                       grepl("treatment:yr_qtr2018.4", names(betas_event)))
+                          grepl("treatment:yr_qtr2018.4", names(betas_event)))
 # 2. Identify Post-Policy indices (2019.2 through 2022.4)
 post_indices <- which(grepl("treatment:yr_qtr2019.[2-4]", names(betas_event)) | 
                         grepl("treatment:yr_qtr202[0-2]", names(betas_event)))
@@ -340,8 +336,8 @@ for(i in 1:(length(post_indices_v) - 1)) {
 
 #Test 3 Time Homogeneity test(Null=Difference in coefficients=0)
 wald_constanttimeeffects <- wald.test(Sigma = hcr_vcov, 
-                        b = coef(eventmodel)[vcov_names], 
-                        L = L_homog)
+                                      b = coef(eventmodel)[vcov_names], 
+                                      L = L_homog)
 
 print(wald_constanttimeeffects)
 # 1. Get the full vector of coefficients
@@ -350,7 +346,7 @@ betas <- coef(hetmodel)
 # 2. Identify the numeric positions (indices) of the London terms
 # Note: we use the coefficients that ARE NOT NA to match your hcr_vcovh dimensions
 betas_clean <- na.omit(betas)
-target_indices <- which(grepl("did1", names(betas_clean)))
+target_indices <- which(grepl("did1:", names(betas_clean)))
 num_targets <- length(target_indices)
 
 # Initialize a matrix of zeros
@@ -365,12 +361,12 @@ for (i in 1:(num_targets - 1)) {
 # 3. Perform the Wald Test
 # Sigma is your HC3 matrix, b is the vector of estimated coefficients
 joint_test_hc3homogenousstationeffects <- wald.test(Sigma = hcr_vcovh, 
-                            b = betas_clean, 
-                            Terms = target_indices)
+                                                    b = betas_clean, 
+                                                    Terms = target_indices)
 #Test 4 Individual Station Level Homogeneity test(Null=Difference in station coefficients=0)
 joint_test_hc3homogenousstationhypothesis <- wald.test(Sigma = hcr_vcovh, 
-                                                    b = betas_clean, 
-                                                    L=Lhomogens)
+                                                       b = betas_clean, 
+                                                       L=Lhomogens)
 print(joint_test_hc3homogenousstationeffects)
 print(joint_test_hc3homogenousstationhypothesis)
 print(wald_pre)
@@ -408,3 +404,10 @@ results_df <- bind_rows(
   extract_wald(wald_post, "Post-Treatment Effects"),
   extract_wald(wald_constanttimeeffects, "Constant Time Effects"))
 gt(results_df)
+pmmodelr = reducedmodel
+pmhetmodel = hetmodel
+pmvcovhchet = hcr_vcovh
+pmvcovcr= cluster_vcovr
+pmvcovhr= hcr_vcovr
+stargazer(hetmodel,reducedmodel,pmhetmodel,pmmodelr,se=list(sqrt(diag(hcr_vcovh)),sqrt(diag(hcr_vcovr)),sqrt(diag(pmvcovhchet)),sqrt(diag(pmvcovcr))),column.labels = c("HeterogeneousNo2","ReducedNo2","HeterogeneousPM10","ReducedPM10"),omit.stat = c("f", "ser"),
+          header = FALSE,type = "text",title="Pollutant Levels,Station and Quarter FE,HC3(Jacknife)SE",omit = c("^Station", "yr_qtr"))
