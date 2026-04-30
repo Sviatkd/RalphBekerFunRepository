@@ -406,29 +406,165 @@ p_placebo2 <- coeftest(model_placebo_space,
 
 # ============================================================
 # 13. Wald Tests
+# HC3 for pre-trends (small pre-period sample)
+# Wild Cluster Bootstrap (Webb weights, Unit-level) for main tests
+# Matches Sviat's approach on the air quality side
 # ============================================================
 
+# ============================================================
+# Manual Wild Cluster Bootstrap (WCB)
+# Webb weights: {-sqrt(3/2), -1, -sqrt(1/2), sqrt(1/2), 1, sqrt(3/2)}
+# Cluster level: Unit (G=7 for main DiD, fewer for placebos)
+# Impose null: residuals from restricted model
+# B = 9999 replications
+# No external package required — base R only
+# ============================================================
+
+wcb_pval <- function(model, param, cluster_var, data, B = 9999, seed = 42) {
+  set.seed(seed)
+
+  # Webb weights
+  webb <- c(-sqrt(3/2), -1, -sqrt(1/2), sqrt(1/2), 1, sqrt(3/2))
+
+  # Observed t-statistic (CR2 clustered SE)
+  cr2_vcov   <- vcovCR(model, cluster = data[[cluster_var]], type = "CR2")
+  t_obs      <- coef(model)[param] / sqrt(cr2_vcov[param, param])
+
+  # Restricted model residuals (impose H0: param = 0)
+  coefs_r        <- coef(model)
+  coefs_r[param] <- 0
+  y_hat_r        <- model.matrix(model) %*% coefs_r
+  resids_r       <- model$model[, 1] - y_hat_r
+
+  clusters <- unique(data[[cluster_var]])
+  G        <- length(clusters)
+
+  t_boot <- numeric(B)
+
+  for (b in seq_len(B)) {
+    # Draw one Webb weight per cluster
+    w <- sample(webb, G, replace = TRUE)
+    names(w) <- clusters
+
+    # Multiply residuals by cluster weight
+    w_vec  <- w[data[[cluster_var]]]
+    y_boot <- as.numeric(y_hat_r + resids_r * w_vec)
+
+    # Refit with bootstrap outcome
+    df_b           <- data
+    df_b[["y_b"]]  <- y_boot
+    form_b         <- update(formula(model), y_b ~ .)
+    mod_b          <- lm(form_b, data = df_b)
+
+    # Bootstrap t-stat
+    vcov_b    <- vcovCR(mod_b, cluster = df_b[[cluster_var]], type = "CR2")
+    t_boot[b] <- coef(mod_b)[param] / sqrt(vcov_b[param, param])
+  }
+
+  # Two-sided p-value
+  p_val <- mean(abs(t_boot) >= abs(t_obs))
+  list(t_obs = t_obs, p_val = p_val, B = B)
+}
+
+# --- HC3 Pre-Trends Test (G=7 units, small pre-period — keep HC3) ---
 df_pre    <- df_did %>% filter(Year < 2019)
 model_pre <- lm(CycleTraffic_bn ~ treated + Year + treated:Year,
                 data = df_pre)
 
-cat("\n========== WALD TEST 1: Pre-Trends ==========\n")
+cat("\n========== WALD TEST 1: Pre-Trends (HC3) ==========\n")
 cat("H0: treated:Year = 0 (London trend same as FMC controls pre-2019)\n\n")
 wald_pre <- linearHypothesis(model_pre, "treated:Year = 0",
                              vcov = vcovHC(model_pre, type = "HC3"))
 print(wald_pre)
 
-cat("\n========== WALD TEST 2: Post-Policy Effect ==========\n")
-cat("H0: DiD = 0\n\n")
-wald_post <- linearHypothesis(model1, "did = 0",
-                              vcov = vcovHC(model1, type = "HC3"))
-print(wald_post)
+# --- WCB: Main DiD effect ---
+cat("\n========== WALD TEST 2: Post-Policy Effect (WCB, Webb weights, Unit clustering) ==========\n")
+cat("H0: DiD = 0 | B = 9999\n\n")
+wcb_main <- wcb_pval(model1, "did", "Unit", df_did, B = 9999, seed = 42)
+cat("Observed t:  ", round(wcb_main$t_obs, 4), "\n")
+cat("WCB p-value: ", round(wcb_main$p_val,  4), "\n")
+
+# --- WCB: Placebo 1 fake 2015 ---
+cat("\n========== WCB PLACEBO 1: Fake 2015 Policy (WCB, Webb weights) ==========\n")
+cat("H0: did_placebo = 0 | B = 9999\n\n")
+wcb_p1 <- wcb_pval(model_placebo_time, "did_placebo", "Unit",
+                   df_placebo_time, B = 9999, seed = 42)
+cat("Observed t:  ", round(wcb_p1$t_obs, 4), "\n")
+cat("WCB p-value: ", round(wcb_p1$p_val,  4), "\n")
+
+# --- WCB: Placebo 2 fake GM ---
+cat("\n========== WCB PLACEBO 2: Fake Treatment GM (WCB, Webb weights) ==========\n")
+cat("H0: did_placebo = 0 | B = 9999\n\n")
+wcb_p2 <- wcb_pval(model_placebo_space, "did_placebo", "Unit",
+                   df_placebo_space, B = 9999, seed = 42)
+cat("Observed t:  ", round(wcb_p2$t_obs, 4), "\n")
+cat("WCB p-value: ", round(wcb_p2$p_val,  4), "\n")
 
 cat("\n--- Summary ---\n")
-cat("Pre-trends Wald p-value:  ", round(wald_pre$`Pr(>F)`[2],  4), "\n")
-cat("Post-policy Wald p-value: ", round(wald_post$`Pr(>F)`[2], 4), "\n")
-cat("Placebo 1 (fake 2015) p:  ", round(p_placebo1, 4), "\n")
-cat("Placebo 2 (fake GM) p:    ", round(p_placebo2, 4), "\n")
+cat("Pre-trends HC3 p-value:        ", round(wald_pre$`Pr(>F)`[2], 4), "\n")
+cat("Post-policy WCB p-value:       ", round(wcb_main$p_val,        4), "\n")
+cat("Placebo 1 (fake 2015) WCB p:   ", round(wcb_p1$p_val,          4), "\n")
+cat("Placebo 2 (fake GM) WCB p:     ", round(wcb_p2$p_val,          4), "\n")
+
+
+# ============================================================
+# 14. ACF Plots — Residual Serial Correlation by Unit
+# Check for within-unit autocorrelation post-model
+# If white noise: clustering is sufficient
+# If persistent ACF: serial correlation remains
+# ============================================================
+
+df_did <- df_did %>%
+  mutate(resid_did = residuals(model1))
+
+units_ordered <- sort(unique(df_did$Unit))
+
+png("cycling_acf_by_unit.png", width = 1800, height = 1200, res = 150)
+par(mfrow = c(2, 4), mar = c(4, 4, 3, 1))
+
+for (u in units_ordered) {
+  resids <- df_did %>%
+    filter(Unit == u) %>%
+    arrange(Year) %>%
+    pull(resid_did)
+
+  acf(resids,
+      main  = u,
+      xlab  = "Lag (Years)",
+      ylab  = "Autocorrelation",
+      col   = "#1f77b4",
+      lwd   = 2,
+      ci.col = "red")
+}
+
+dev.off()
+cat("  - cycling_acf_by_unit.png\n")
+
+# Also city-level aggregated residuals (mean by Unit-Year)
+df_city_resid <- df_did %>%
+  group_by(Unit, Year) %>%
+  summarise(mean_resid = mean(resid_did), .groups = "drop")
+
+png("cycling_acf_city_level.png", width = 1800, height = 900, res = 150)
+par(mfrow = c(2, 4), mar = c(4, 4, 3, 1))
+
+for (u in units_ordered) {
+  resids <- df_city_resid %>%
+    filter(Unit == u) %>%
+    arrange(Year) %>%
+    pull(mean_resid)
+
+  acf(resids,
+      main   = paste(u, "(City Level)"),
+      xlab   = "Lag (Years)",
+      ylab   = "Autocorrelation",
+      col    = "#d62728",
+      lwd    = 2,
+      ci.col = "darkred")
+}
+
+dev.off()
+cat("  - cycling_acf_city_level.png\n")
 
 
 # ============================================================
@@ -442,3 +578,5 @@ cat("  - cycling_did_coefplot_FMC.png\n")
 cat("  - cycling_event_study_FMC.png\n")
 cat("  - cycling_did_FMC_HC3.txt\n")
 cat("  - cycling_did_FMC_CR2.txt\n")
+cat("  - cycling_acf_by_unit.png\n")
+cat("  - cycling_acf_city_level.png\n")
