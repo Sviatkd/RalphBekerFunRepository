@@ -1,19 +1,9 @@
-# ============================================================
-# Cycling Demand - Interrupted Time Series (ITS) Analysis
-# London only - pre-policy period as its own counterfactual
-# No control group, no parallel trends assumption needed
-# Formula: Cycling = a + time + ULEZdummy + ULEZ:time
-# time      = pre-existing trend in London
-# ulez      = immediate level change at policy (2019)
-# ulez_time = change in slope after policy
-# SE: HC3 Jackknife
-# Run with and without COVID years (Option 3 - present both)
-# ============================================================
+# ITS - London cycling
+# pre-policy London as own counterfactual
+# HAC NW SEs throughout, full sample and covid-excluded
 
 
-# ============================================================
-# 1. Libraries
-# ============================================================
+# libraries
 
 if (!require("tidyverse"))    install.packages("tidyverse")
 if (!require("readODS"))      install.packages("readODS")
@@ -32,9 +22,7 @@ library(ggplot2)
 library(car)
 
 
-# ============================================================
-# 2. Load & Prepare Data (London only)
-# ============================================================
+# load & prepare data (london only)
 
 setwd(".")  # Change to your folder path if needed
 
@@ -68,9 +56,7 @@ df_london <- raw %>%
 df_no_covid <- df_london %>% filter(!Year %in% c(2020, 2021))
 
 
-# ============================================================
-# 3. ITS Models
-# ============================================================
+# its models
 
 # Full sample
 its1 <- lm(CycleTraffic_bn ~ time + ulez + ulez_time, data = df_london)
@@ -80,11 +66,7 @@ its2 <- lm(log_cycle       ~ time + ulez + ulez_time, data = df_london)
 its3 <- lm(CycleTraffic_bn ~ time + ulez + ulez_time, data = df_no_covid)
 its4 <- lm(log_cycle       ~ time + ulez + ulez_time, data = df_no_covid)
 
-# HAC (Newey-West) SEs
-# ITS is a single time series — serial correlation is the main concern
-# HAC corrects for both heteroskedasticity AND autocorrelation
-# lag = floor(T^(1/3)) is the standard automatic lag selection rule
-# Full sample T=32: lag=3; No COVID T=30: lag=3
+# HAC Newey-West, lag = floor(T^1/3)
 hac_lag_full   <- floor(nrow(df_london)   ^ (1/3))
 hac_lag_nocovid <- floor(nrow(df_no_covid) ^ (1/3))
 
@@ -97,20 +79,26 @@ cat("\nHAC lag (full sample):", hac_lag_full, "\n")
 cat("HAC lag (no COVID):   ", hac_lag_nocovid, "\n")
 
 
-# ============================================================
-# 4. Print Results
-# ============================================================
+# print results
 
-cat("\n========== ITS MODEL 1: Levels - Full Sample (HAC Newey-West) ==========\n")
+cat("
+full sample levels:
+")
 print(coeftest(its1, vcov = NeweyWest(its1, lag = hac_lag_full, prewhite = FALSE)))
 
-cat("\n========== ITS MODEL 2: Log Levels - Full Sample (HAC Newey-West) ==========\n")
+cat("
+full sample log:
+")
 print(coeftest(its2, vcov = NeweyWest(its2, lag = hac_lag_full, prewhite = FALSE)))
 
-cat("\n========== ITS MODEL 3: Levels - No COVID (HAC Newey-West) ==========\n")
+cat("
+no covid levels:
+")
 print(coeftest(its3, vcov = NeweyWest(its3, lag = hac_lag_nocovid, prewhite = FALSE)))
 
-cat("\n========== ITS MODEL 4: Log Levels - No COVID (HAC Newey-West) ==========\n")
+cat("
+no covid log:
+")
 print(coeftest(its4, vcov = NeweyWest(its4, lag = hac_lag_nocovid, prewhite = FALSE)))
 
 # Full sample vs No COVID side by side (levels)
@@ -142,49 +130,48 @@ stargazer(its2, its4,
           out           = "cycling_its_log_comparison.txt")
 
 
-# ============================================================
-# 5. Wald Tests — all use HAC vcov
-# ============================================================
+# wald tests — all use hac vcov
 
-cat("\n========== WALD TEST 1: Joint Effect (level + slope) — HAC ==========\n")
-cat("H0: ulez = 0 AND ulez_time = 0\n")
-cat("Rejection = ULEZ had some effect on cycling\n\n")
+cat("
+joint wald:
+")
 wald_joint <- linearHypothesis(its1,
                                c("ulez = 0", "ulez_time = 0"),
                                vcov = NeweyWest(its1, lag = hac_lag_full, prewhite = FALSE))
 print(wald_joint)
 
-cat("\n========== WALD TEST 2: Slope Change — HAC ==========\n")
-cat("H0: ulez_time = 0 (no change in trend after ULEZ)\n\n")
+cat("
+slope change:
+")
 wald_slope <- linearHypothesis(its1, "ulez_time = 0",
                                vcov = NeweyWest(its1, lag = hac_lag_full, prewhite = FALSE))
 print(wald_slope)
 
-cat("\n========== WALD TEST 3: Level Change — HAC ==========\n")
-cat("H0: ulez = 0 (no immediate jump at ULEZ)\n\n")
+cat("
+level change:
+")
 wald_level <- linearHypothesis(its1, "ulez = 0",
                                vcov = NeweyWest(its1, lag = hac_lag_full, prewhite = FALSE))
 print(wald_level)
 
 # Also run on no-COVID model (more credible)
-cat("\n========== WALD TEST 4: Slope Change No COVID — HAC (primary result) ==========\n")
-cat("H0: ulez_time = 0 on COVID-excluded model\n\n")
+cat("
+slope no covid (primary):
+")
 wald_slope_nc <- linearHypothesis(its3, "ulez_time = 0",
                                   vcov = NeweyWest(its3, lag = hac_lag_nocovid, prewhite = FALSE))
 print(wald_slope_nc)
 
-cat("\n--- Wald Test Summary (HAC Newey-West throughout) ---\n")
+cat("\nsummary:\n")
 cat("Joint (level + slope) p:         ", round(wald_joint$`Pr(>F)`[2],    4), "\n")
 cat("Slope change (full sample) p:    ", round(wald_slope$`Pr(>F)`[2],    4), "\n")
 cat("Level change p:                  ", round(wald_level$`Pr(>F)`[2],    4), "\n")
 cat("Slope change (no COVID) p:       ", round(wald_slope_nc$`Pr(>F)`[2], 4), "\n")
 
 
-# ============================================================
-# 6. ITS Plot - Full Sample
+# its plot - full sample
 # Solid line = fitted model
 # Dashed line = counterfactual (pre-policy trend extrapolated)
-# ============================================================
 
 df_london <- df_london %>%
   mutate(
@@ -215,9 +202,7 @@ print(its_plot)
 ggsave("cycling_its_plot.png", its_plot, width = 10, height = 5.5, dpi = 150)
 
 
-# ============================================================
-# 7. ITS Plot - COVID Excluded
-# ============================================================
+# its plot - covid excluded
 
 df_no_covid <- df_no_covid %>%
   mutate(
@@ -248,10 +233,8 @@ print(its_plot_nc)
 ggsave("cycling_its_plot_nocovid.png", its_plot_nc, width = 10, height = 5.5, dpi = 150)
 
 
-# ============================================================
-# 8. Combined Comparison Plot - Full Sample vs COVID Excluded
+# combined comparison plot - full sample vs covid excluded
 # Both versions side by side in one figure using facet_wrap
-# ============================================================
 
 # Build combined dataset with a label for each version
 df_combined <- bind_rows(
@@ -289,13 +272,7 @@ ggsave("cycling_its_comparison.png", combined_plot,
        width = 13, height = 5.5, dpi = 150)
 
 
-# ============================================================
 # Done
-# ============================================================
 
-cat("\nDone! Files saved to:", getwd(), "\n")
-cat("  - cycling_its_levels_comparison.txt\n")
-cat("  - cycling_its_log_comparison.txt\n")
-cat("  - cycling_its_plot.png\n")
-cat("  - cycling_its_plot_nocovid.png\n")
-cat("  - cycling_its_comparison.png\n")
+cat("\ndone\n")
+
