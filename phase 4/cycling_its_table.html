@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8" /><style>body{background-color:white;}</style></head>
+<body>
+<div id="cycling_its" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>
+#cycling_its table { font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+#cycling_its thead, #cycling_its tbody, #cycling_its tfoot, #cycling_its tr, #cycling_its td, #cycling_its th { border-style: none; }
+#cycling_its .gt_table { display:table; border-collapse:collapse; line-height:normal; margin-left:auto; margin-right:auto; color:#333; font-size:16px; background-color:#fff; border-top:2px solid #A8A8A8; border-bottom:2px solid #A8A8A8; }
+#cycling_its .gt_heading { background-color:#fff; text-align:center; }
+#cycling_its .gt_title { color:#333; font-size:125%; padding:4px 5px; border-bottom:0; }
+#cycling_its .gt_bottom_border { border-bottom:2px solid #D3D3D3; }
+#cycling_its .gt_col_headings { border-top:2px solid #D3D3D3; border-bottom:2px solid #D3D3D3; }
+#cycling_its .gt_col_heading { color:#333; background-color:#fff; font-size:100%; font-weight:normal; vertical-align:bottom; padding:5px; }
+#cycling_its .gt_table_body { border-top:2px solid #D3D3D3; border-bottom:2px solid #D3D3D3; }
+#cycling_its .gt_row { padding:8px 5px; border-top:1px solid #D3D3D3; vertical-align:middle; }
+#cycling_its .gt_left { text-align:left; }
+#cycling_its .gt_right { text-align:right; font-variant-numeric:tabular-nums; }
+#cycling_its .gt_center { text-align:center; }
+#cycling_its .gt_sourcenotes { color:#333; background-color:#fff; border:none; }
+#cycling_its .gt_sourcenote { font-size:90%; padding:4px 5px; }
+#cycling_its sup { font-size:65%; }
+</style>
+<table class="gt_table">
+
+  <thead>
+    <tr class="gt_heading">
+      <td colspan="5" class="gt_heading gt_title gt_font_normal gt_bottom_border">ITS — London Cycling Demand, HAC Newey-West SE (lag = 3)</td>
+    </tr>
+    <tr class="gt_col_headings">
+      <th class="gt_col_heading gt_columns_bottom_border gt_left" rowspan="1" colspan="1" scope="col"></th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col">(1) Levels Full</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col">(2) Levels NoCOVID ★</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col">(3) Log Full</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col">(4) Log NoCOVID ★</th>
+    </tr>
+  </thead>
+  <tbody class="gt_table_body">
+    <tr><td headers="var" class="gt_row gt_left"><strong>Time Trend (β₁)</strong></td>
+<td headers="full" class="gt_row gt_right">0.0090<sup>***</sup></td>
+<td headers="nocov" class="gt_row gt_right">0.0090<sup>***</sup></td>
+<td headers="lfull" class="gt_row gt_right">0.0249<sup>***</sup></td>
+<td headers="lnocov" class="gt_row gt_right">0.0249<sup>***</sup></td></tr>
+    <tr><td headers="var" class="gt_row gt_left"></td>
+<td headers="full" class="gt_row gt_right">(0.0012)</td>
+<td headers="nocov" class="gt_row gt_right">(0.0012)</td>
+<td headers="lfull" class="gt_row gt_right">(0.0024)</td>
+<td headers="lnocov" class="gt_row gt_right">(0.0024)</td></tr>
+    <tr><td headers="var" class="gt_row gt_left"><strong>ULEZ Level Change (β₂)</strong></td>
+<td headers="full" class="gt_row gt_right">0.0814°</td>
+<td headers="nocov" class="gt_row gt_right">−0.0114</td>
+<td headers="lfull" class="gt_row gt_right">0.1180</td>
+<td headers="lnocov" class="gt_row gt_right">−0.0415</td></tr>
+    <tr><td headers="var" class="gt_row gt_left"></td>
+<td headers="full" class="gt_row gt_right">(0.0462)</td>
+<td headers="nocov" class="gt_row gt_right">(0.0191)</td>
+<td headers="lfull" class="gt_row gt_right">(0.0839)</td>
+<td headers="lnocov" class="gt_row gt_right">(0.0395)</td></tr>
+    <tr><td headers="var" class="gt_row gt_left"><strong>ULEZ Slope Change (β₃)</strong></td>
+<td headers="full" class="gt_row gt_right">0.0167°</td>
+<td headers="nocov" class="gt_row gt_right">0.0352<sup>***</sup></td>
+<td headers="lfull" class="gt_row gt_right">0.0212</td>
+<td headers="lnocov" class="gt_row gt_right">0.0530<sup>***</sup></td></tr>
+    <tr><td headers="var" class="gt_row gt_left"></td>
+<td headers="full" class="gt_row gt_right">(0.0100)</td>
+<td headers="nocov" class="gt_row gt_right">(0.0016)</td>
+<td headers="lfull" class="gt_row gt_right">(0.0175)</td>
+<td headers="lnocov" class="gt_row gt_right">(0.0023)</td></tr>
+    <tr><td headers="var" class="gt_row gt_left"><strong>95% CI (slope)</strong></td>
+<td headers="full" class="gt_row gt_right">—</td>
+<td headers="nocov" class="gt_row gt_right">[0.032, 0.038]</td>
+<td headers="lfull" class="gt_row gt_right">—</td>
+<td headers="lnocov" class="gt_row gt_right">[0.048, 0.058]</td></tr>
+    <tr><td headers="var" class="gt_row gt_left"><strong>Constant</strong></td>
+<td headers="full" class="gt_row gt_right">0.4810<sup>***</sup></td>
+<td headers="nocov" class="gt_row gt_right">0.4810<sup>***</sup></td>
+<td headers="lfull" class="gt_row gt_right">−0.7090<sup>***</sup></td>
+<td headers="lnocov" class="gt_row gt_right">−0.7090<sup>***</sup></td></tr>
+    <tr><td headers="var" class="gt_row gt_left"></td>
+<td headers="full" class="gt_row gt_right">(0.0196)</td>
+<td headers="nocov" class="gt_row gt_right">(0.0196)</td>
+<td headers="lfull" class="gt_row gt_right">(0.0387)</td>
+<td headers="lnocov" class="gt_row gt_right">(0.0387)</td></tr>
+    <tr><td headers="var" class="gt_row gt_left">SE Method</td>
+<td headers="full" class="gt_row gt_right">HAC NW(3)</td>
+<td headers="nocov" class="gt_row gt_right">HAC NW(3)</td>
+<td headers="lfull" class="gt_row gt_right">HAC NW(3)</td>
+<td headers="lnocov" class="gt_row gt_right">HAC NW(3)</td></tr>
+    <tr><td headers="var" class="gt_row gt_left">Observations</td>
+<td headers="full" class="gt_row gt_right">32</td>
+<td headers="nocov" class="gt_row gt_right">30</td>
+<td headers="lfull" class="gt_row gt_right">32</td>
+<td headers="lnocov" class="gt_row gt_right">30</td></tr>
+    <tr><td headers="var" class="gt_row gt_left">R<sup>2</sup></td>
+<td headers="full" class="gt_row gt_right">0.919</td>
+<td headers="nocov" class="gt_row gt_right">0.950</td>
+<td headers="lfull" class="gt_row gt_right">0.937</td>
+<td headers="lnocov" class="gt_row gt_right">0.951</td></tr>
+    <tr><td headers="var" class="gt_row gt_left">Adjusted R<sup>2</sup></td>
+<td headers="full" class="gt_row gt_right">0.910</td>
+<td headers="nocov" class="gt_row gt_right">0.944</td>
+<td headers="lfull" class="gt_row gt_right">0.930</td>
+<td headers="lnocov" class="gt_row gt_right">0.946</td></tr>
+  </tbody>
+  <tfoot class="gt_sourcenotes">
+    <tr><td class="gt_sourcenote" colspan="5">★ Primary result (COVID-excluded). °p&lt;0.10; <sup>*</sup>p&lt;0.1; <sup>**</sup>p&lt;0.05; <sup>***</sup>p&lt;0.01</td></tr>
+  </tfoot>
+</table>
+</div>
+</body>
+</html>

@@ -1,0 +1,29 @@
+
+ITS - London Cycling: Full Sample vs No COVID (Log, HAC Newey-West SE)
+=====================================================
+                          Dependent variable:        
+                  -----------------------------------
+                               log_cycle             
+                   Full Sample      COVID Excluded   
+                       (1)               (2)         
+-----------------------------------------------------
+Time Trend          0.0249***         0.0249***      
+                     (0.0024)          (0.0024)      
+                                                     
+ULEZ Level Change     0.1180           -0.0415       
+                     (0.0839)          (0.0395)      
+                                                     
+ULEZ Slope Change     0.0212          0.0530***      
+                     (0.0175)          (0.0023)      
+                                                     
+Constant            -0.7090***        -0.7090***     
+                     (0.0387)          (0.0387)      
+                                                     
+-----------------------------------------------------
+SE Method         HAC Newey-West    HAC Newey-West   
+COVID years          Included    Excluded (2020-2021)
+Observations            32                30         
+R2                    0.9365            0.9513       
+Adjusted R2           0.9297            0.9457       
+=====================================================
+Note:                     *p<0.1; **p<0.05; ***p<0.01

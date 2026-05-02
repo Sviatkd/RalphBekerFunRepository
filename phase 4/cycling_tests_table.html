@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8" /><style>body{background-color:white;}</style></head>
+<body>
+<div id="cycling_tests" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+<style>
+#cycling_tests table { font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+#cycling_tests thead, #cycling_tests tbody, #cycling_tests tfoot, #cycling_tests tr, #cycling_tests td, #cycling_tests th { border-style: none; }
+#cycling_tests .gt_table { display:table; border-collapse:collapse; line-height:normal; margin-left:auto; margin-right:auto; color:#333; font-size:16px; background-color:#fff; border-top:2px solid #A8A8A8; border-bottom:2px solid #A8A8A8; }
+#cycling_tests .gt_heading { background-color:#fff; text-align:center; }
+#cycling_tests .gt_title { color:#333; font-size:125%; padding:4px 5px; border-bottom:0; }
+#cycling_tests .gt_bottom_border { border-bottom:2px solid #D3D3D3; }
+#cycling_tests .gt_col_headings { border-top:2px solid #D3D3D3; border-bottom:2px solid #D3D3D3; }
+#cycling_tests .gt_col_heading { color:#333; background-color:#fff; font-size:100%; font-weight:normal; vertical-align:bottom; padding:5px; }
+#cycling_tests .gt_table_body { border-top:2px solid #D3D3D3; border-bottom:2px solid #D3D3D3; }
+#cycling_tests .gt_row { padding:8px 5px; border-top:1px solid #D3D3D3; vertical-align:middle; }
+#cycling_tests .gt_left { text-align:left; }
+#cycling_tests .gt_right { text-align:right; font-variant-numeric:tabular-nums; }
+#cycling_tests .gt_center { text-align:center; }
+#cycling_tests .gt_sourcenotes { color:#333; background-color:#fff; border:none; }
+#cycling_tests .gt_sourcenote { font-size:90%; padding:4px 5px; }
+#cycling_tests sup { font-size:65%; }
+</style>
+<table class="gt_table">
+
+  <thead>
+    <tr class="gt_heading">
+      <td colspan="5" class="gt_heading gt_title gt_font_normal gt_bottom_border">Hypothesis Tests — Cycling Demand</td>
+    </tr>
+    <tr class="gt_col_headings">
+      <th class="gt_col_heading gt_columns_bottom_border gt_left" rowspan="1" colspan="1" scope="col">Test</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_left" rowspan="1" colspan="1" scope="col">Model</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_left" rowspan="1" colspan="1" scope="col">SE Method</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col">Statistic</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col">p-value</th>
+    </tr>
+  </thead>
+  <tbody class="gt_table_body">
+    <tr><td headers="test" class="gt_row gt_left">Pre-trends: London slope = controls</td>
+<td headers="model" class="gt_row gt_left">DiD</td>
+<td headers="se" class="gt_row gt_left">HC3</td>
+<td headers="stat" class="gt_row gt_right">F = 55.811</td>
+<td headers="pval" class="gt_row gt_right">&lt; 0.001</td></tr>
+    <tr><td headers="test" class="gt_row gt_left">Post-policy DiD effect = 0</td>
+<td headers="model" class="gt_row gt_left">DiD</td>
+<td headers="se" class="gt_row gt_left">WCB Webb</td>
+<td headers="stat" class="gt_row gt_right">t = 15.472</td>
+<td headers="pval" class="gt_row gt_right">0.595</td></tr>
+    <tr><td headers="test" class="gt_row gt_left">Placebo DiD: fake 2015 policy</td>
+<td headers="model" class="gt_row gt_left">DiD</td>
+<td headers="se" class="gt_row gt_left">WCB Webb</td>
+<td headers="stat" class="gt_row gt_right">—</td>
+<td headers="pval" class="gt_row gt_right">0.597</td></tr>
+    <tr><td headers="test" class="gt_row gt_left">Placebo DiD: fake treatment (GM)</td>
+<td headers="model" class="gt_row gt_left">DiD</td>
+<td headers="se" class="gt_row gt_left">WCB Webb</td>
+<td headers="stat" class="gt_row gt_right">—</td>
+<td headers="pval" class="gt_row gt_right">0.785</td></tr>
+    <tr><td headers="test" class="gt_row gt_left">ITS joint effect: β₂ = β₃ = 0</td>
+<td headers="model" class="gt_row gt_left">ITS full</td>
+<td headers="se" class="gt_row gt_left">HAC NW(3)</td>
+<td headers="stat" class="gt_row gt_right">F = 20.565</td>
+<td headers="pval" class="gt_row gt_right">&lt; 0.001</td></tr>
+    <tr><td headers="test" class="gt_row gt_left">ITS slope change: β₃ = 0 (full)</td>
+<td headers="model" class="gt_row gt_left">ITS full</td>
+<td headers="se" class="gt_row gt_left">HAC NW(3)</td>
+<td headers="stat" class="gt_row gt_right">F = 2.777</td>
+<td headers="pval" class="gt_row gt_right">0.107</td></tr>
+    <tr><td headers="test" class="gt_row gt_left">ITS slope change: β₃ = 0 (NoCOVID) ★</td>
+<td headers="model" class="gt_row gt_left">ITS NoCOVID</td>
+<td headers="se" class="gt_row gt_left">HAC NW(3)</td>
+<td headers="stat" class="gt_row gt_right">F = 499.36</td>
+<td headers="pval" class="gt_row gt_right">&lt; 0.001</td></tr>
+  </tbody>
+  <tfoot class="gt_sourcenotes">
+    <tr><td class="gt_sourcenote" colspan="5">★ Primary causal result. WCB: Webb weights, B = 9,999 replications, Unit-level clustering, null imposed.</td></tr>
+  </tfoot>
+</table>
+</div>
+</body>
+</html>
