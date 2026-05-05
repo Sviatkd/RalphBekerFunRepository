@@ -1,29 +1,20 @@
-
-# Cycling Demand - Difference-in-Differences (DiD) Analysis
-# TRA0403: Pedal cycle traffic (billion vehicle miles)
-# Treatment: London
-# Controls: Greater Manchester FMC, West Midlands FMC,
-#           Tyne and Wear FMC, West Yorkshire FMC,
-#           South Yorkshire FMC, Scotland
-# These match the air quality control cities exactly
-# Policy cutoff: 2019 (ULEZ)
-# SE: HC3 Jackknife (primary) + CR2 Region-clustered (robustness)
-# 
+# DiD analysis - cycling demand
+# London treated vs FMC controls (matching air quality side)
+# 2019 ULEZ cutoff
+# TWFE: Unit + Year FE via feols() — consistent with Sviat's air quality spec
+# WCB via fwildclusterboot::boottest() on feols objects
 
 
-# 1. Libraries
-
-
-if (!require("readODS"))      install.packages("readODS")
-if (!require("tidyverse"))    install.packages("tidyverse")
-if (!require("lmtest"))       install.packages("lmtest")
-if (!require("sandwich"))     install.packages("sandwich")
-if (!require("clubSandwich")) install.packages("clubSandwich")
-if (!require("stargazer"))    install.packages("stargazer")
-if (!require("ggplot2"))      install.packages("ggplot2")
-if (!require("skimr"))        install.packages("skimr")
-if (!require("aod"))          install.packages("aod")
-if (!require("car"))          install.packages("car")
+if (!require("readODS"))          install.packages("readODS")
+if (!require("tidyverse"))        install.packages("tidyverse")
+if (!require("lmtest"))           install.packages("lmtest")
+if (!require("sandwich"))         install.packages("sandwich")
+if (!require("clubSandwich"))     install.packages("clubSandwich")
+if (!require("stargazer"))        install.packages("stargazer")
+if (!require("ggplot2"))          install.packages("ggplot2")
+if (!require("skimr"))            install.packages("skimr")
+if (!require("car"))              install.packages("car")
+if (!require("fixest"))           install.packages("fixest")
 
 library(readODS)
 library(tidyverse)
@@ -33,23 +24,20 @@ library(clubSandwich)
 library(stargazer)
 library(ggplot2)
 library(skimr)
-library(aod)
 library(car)
-
+library(fixest)
 
 
 # load data
 
-setwd(".")  # Change to your folder path if needed
+setwd("C:/Users/kalid/OneDrive/Desktop/New folder")
 
 raw <- read_ods("tra0403-miles-pedal-cycle-traffic-by-region.ods",
                 sheet = "TRA0403",
                 skip  = 3)
 
 
-
-# 3. Clean & Reshape
-
+# clean & reshape
 
 colnames(raw)[1] <- "Region"
 colnames(raw)[2] <- "Subarea"
@@ -57,7 +45,6 @@ colnames(raw)[3] <- "Notes"
 colnames(raw)[4] <- "Units"
 colnames(raw)[5:ncol(raw)] <- as.character(1993:2024)
 
-# Keep London (treated) + 5 FMC controls + Scotland
 # FMCs match air quality control cities exactly
 controls_keep <- c(
   "Greater Manchester FMC",
@@ -70,15 +57,12 @@ controls_keep <- c(
 
 df_wide <- raw %>%
   filter(
-    # London treated
     (Region == "London" & grepl("All", Subarea, ignore.case = TRUE)) |
-    # FMC controls
     trimws(Subarea) %in% controls_keep
   ) %>%
   select(Region, Subarea, all_of(as.character(1993:2024))) %>%
   mutate(across(as.character(1993:2024), as.numeric)) %>%
   mutate(
-    # Clean label for each unit
     Unit = case_when(
       Region == "London"                                   ~ "London",
       trimws(Subarea) == "Greater Manchester FMC"          ~ "Greater Manchester",
@@ -92,16 +76,12 @@ df_wide <- raw %>%
   ) %>%
   select(Unit, all_of(as.character(1993:2024)))
 
-
 df_long <- df_wide %>%
   pivot_longer(cols      = as.character(1993:2024),
                names_to  = "Year",
                values_to = "CycleTraffic_bn") %>%
   mutate(Year            = as.integer(Year),
          CycleTraffic_bn = as.numeric(CycleTraffic_bn))
-
-
-# did variables
 
 df_did <- df_long %>%
   mutate(
@@ -112,11 +92,9 @@ df_did <- df_long %>%
   )
 
 
+# summary stats
 
-# Summary Statistics
-
-
-cat("\n BY UNIT\n")
+cat("by unit:\n")
 df_did %>%
   group_by(Unit) %>%
   summarise(
@@ -154,8 +132,7 @@ cycling_stats <- df_did %>%
 print(cycling_stats)
 
 
-# Parallel Trends Plot (pre-2019)
-
+# parallel trends plot
 
 pre_trends <- df_did %>%
   filter(Year <= 2019) %>%
@@ -179,9 +156,7 @@ ggsave("cycling_parallel_trends_FMC.png", pre_trends,
        width = 10, height = 5.5, dpi = 150)
 
 
-
-# Full Time Series Plot
-
+# full time series
 
 full_plot <- df_did %>%
   ggplot(aes(x = Year, y = CycleTraffic_bn,
@@ -204,97 +179,56 @@ ggsave("cycling_full_timeseries_FMC.png", full_plot,
        width = 10, height = 5.5, dpi = 150)
 
 
-# DiD Models
-# HC3 Jackknife (primary) + CR2 clustered at Unit level (robustness)
-# Note: 7 units now vs 3 before - clustering more reliable
+# TWFE models
+# Unit + Year FE — Unit FE absorbs treated, Year FE absorbs post and COVID shocks
+# Full sample, no need to drop 2020/2021
+
+twfe1 <- feols(CycleTraffic_bn ~ did | Unit + Year, data = df_did)
+twfe2 <- feols(log_cycle       ~ did | Unit + Year, data = df_did)
+
+cat("\nTWFE levels (HC1):\n")
+print(summary(twfe1, vcov = "HC1"))
+
+cat("\nTWFE log (HC1):\n")
+print(summary(twfe2, vcov = "HC1"))
+
+cat("\nTWFE levels (unit-clustered):\n")
+print(summary(twfe1, vcov = ~Unit))
+
+cat("\nTWFE log (unit-clustered):\n")
+print(summary(twfe2, vcov = ~Unit))
+
+etable(twfe1, twfe2,
+       vcov   = "HC1",
+       title  = "TWFE DiD - Cycling Demand (Unit + Year FE, HC1 SE)",
+       digits = 4,
+       file   = "cycling_did_TWFE.txt")
+
+etable(twfe1, twfe2,
+       vcov   = ~Unit,
+       title  = "TWFE DiD - Cycling Demand (Unit + Year FE, Unit-Clustered SE)",
+       digits = 4,
+       file   = "cycling_did_TWFE_clustered.txt")
 
 
-model1 <- lm(CycleTraffic_bn ~ treated + post + did, data = df_did)
-model2 <- lm(log_cycle       ~ treated + post + did, data = df_did)
+# coefficient plot
 
-df_no_covid <- df_did %>% filter(!Year %in% c(2020, 2021))
-model3 <- lm(CycleTraffic_bn ~ treated + post + did, data = df_no_covid)
-model4 <- lm(log_cycle       ~ treated + post + did, data = df_no_covid)
-
-se1_hc3 <- sqrt(diag(vcovHC(model1, type = "HC3")))
-se2_hc3 <- sqrt(diag(vcovHC(model2, type = "HC3")))
-se3_hc3 <- sqrt(diag(vcovHC(model3, type = "HC3")))
-se4_hc3 <- sqrt(diag(vcovHC(model4, type = "HC3")))
-
-cluster_se1 <- sqrt(diag(vcovCR(model1, cluster = df_did$Unit,      type = "CR2")))
-cluster_se2 <- sqrt(diag(vcovCR(model2, cluster = df_did$Unit,      type = "CR2")))
-cluster_se3 <- sqrt(diag(vcovCR(model3, cluster = df_no_covid$Unit, type = "CR2")))
-cluster_se4 <- sqrt(diag(vcovCR(model4, cluster = df_no_covid$Unit, type = "CR2")))
-
-
-# Print Results
-
-
-cat("\nMODEL 1: Levels (HC3) \n")
-print(coeftest(model1, vcov = vcovHC(model1, type = "HC3")))
-
-cat("\n MODEL 2: Log Levels (HC3) \n")
-print(coeftest(model2, vcov = vcovHC(model2, type = "HC3")))
-
-cat("\n MODEL 3: Levels No COVID (HC3) \n")
-print(coeftest(model3, vcov = vcovHC(model3, type = "HC3")))
-
-cat("\n MODEL 4: Log Levels No COVID (HC3) \n")
-print(coeftest(model4, vcov = vcovHC(model4, type = "HC3")))
-
-stargazer(model1, model2, model3, model4,
-          se               = list(se1_hc3, se2_hc3, se3_hc3, se4_hc3),
-          type             = "text",
-          title            = "DiD - Cycling Demand with FMC Controls (HC3 SE)",
-          dep.var.labels   = c("Cycle Traffic (bn miles)", "Log Cycle Traffic",
-                               "Cycle Traffic (no COVID)", "Log Cycle Traffic (no COVID)"),
-          covariate.labels = c("London (Treated)", "Post-2019",
-                               "DiD (Treated x Post)", "Constant"),
-          omit.stat        = c("f", "ser"),
-          digits           = 4,
-          out              = "cycling_did_FMC_HC3.txt")
-
-stargazer(model1, model2, model3, model4,
-          se               = list(cluster_se1, cluster_se2, cluster_se3, cluster_se4),
-          type             = "text",
-          title            = "DiD - Cycling Demand with FMC Controls (CR2 Clustered SE)",
-          dep.var.labels   = c("Cycle Traffic (bn miles)", "Log Cycle Traffic",
-                               "Cycle Traffic (no COVID)", "Log Cycle Traffic (no COVID)"),
-          covariate.labels = c("London (Treated)", "Post-2019",
-                               "DiD (Treated x Post)", "Constant"),
-          omit.stat        = c("f", "ser"),
-          digits           = 4,
-          out              = "cycling_did_FMC_CR2.txt")
-
-
-# DiD Coefficient Plot (HC3)
-
-get_did_ci <- function(model, label) {
-  coef_rob <- coeftest(model, vcov = vcovHC(model, type = "HC3"))
-  did_row  <- coef_rob["did", ]
-  tibble(
-    Model    = label,
-    Estimate = did_row["Estimate"],
-    SE       = did_row["Std. Error"],
-    CI_lo    = did_row["Estimate"] - 1.96 * did_row["Std. Error"],
-    CI_hi    = did_row["Estimate"] + 1.96 * did_row["Std. Error"]
-  )
-}
-
-did_coefs <- bind_rows(
-  get_did_ci(model1, "Levels"),
-  get_did_ci(model2, "Log Levels"),
-  get_did_ci(model3, "Levels (No COVID)"),
-  get_did_ci(model4, "Log Levels (No COVID)")
+twfe_coefs <- bind_rows(
+  tibble(Model = "Levels",     Estimate = coef(twfe1)["did"],
+         CI_lo = confint(twfe1, vcov = "HC1")["did", 1],
+         CI_hi = confint(twfe1, vcov = "HC1")["did", 2]),
+  tibble(Model = "Log Levels", Estimate = coef(twfe2)["did"],
+         CI_lo = confint(twfe2, vcov = "HC1")["did", 1],
+         CI_hi = confint(twfe2, vcov = "HC1")["did", 2])
 )
 
-coef_plot <- ggplot(did_coefs,
+coef_plot <- ggplot(twfe_coefs,
                     aes(x = Model, y = Estimate,
                         ymin = CI_lo, ymax = CI_hi)) +
   geom_hline(yintercept = 0, linetype = "dashed", colour = "grey50") +
   geom_pointrange(colour = "#1f77b4", size = 0.9, linewidth = 1) +
-  labs(title    = "DiD Coefficient - ULEZ Effect on London Cycling (FMC Controls)",
-       subtitle = "95% CI with HC3 Jackknife Standard Errors",
+  labs(title    = "TWFE DiD Coefficient - ULEZ Effect on London Cycling",
+       subtitle = "95% CI, HC1 SE, Unit + Year Fixed Effects",
        x = "Model Specification",
        y = "DiD Estimate (Treated x Post)") +
   theme_minimal(base_size = 13)
@@ -303,8 +237,7 @@ print(coef_plot)
 ggsave("cycling_did_coefplot_FMC.png", coef_plot, width = 8, height = 5, dpi = 150)
 
 
-# 11. Event Study
-
+# event study
 
 df_event <- df_did %>%
   mutate(year_fct = relevel(factor(Year), ref = "2018"))
@@ -358,8 +291,7 @@ print(event_plot)
 ggsave("cycling_event_study_FMC.png", event_plot, width = 10, height = 5.5, dpi = 150)
 
 
-
-# Placebo Tests
+# placebo tests — TWFE feols
 
 df_placebo_time <- df_did %>%
   filter(Year <= 2018) %>%
@@ -368,11 +300,11 @@ df_placebo_time <- df_did %>%
     did_placebo  = treated * post_placebo
   )
 
-model_placebo_time <- lm(CycleTraffic_bn ~ treated + post_placebo + did_placebo,
-                         data = df_placebo_time)
+twfe_placebo_time <- feols(CycleTraffic_bn ~ did_placebo | Unit + Year,
+                           data = df_placebo_time)
 
-cat("\n PLACEBO 1: Fake Policy Year 2015 \n")
-print(coeftest(model_placebo_time, vcov = vcovHC(model_placebo_time, type = "HC3")))
+cat("\nplacebo 1 (fake 2015):\n")
+print(summary(twfe_placebo_time, vcov = ~Unit))
 
 df_placebo_space <- df_did %>%
   filter(Unit != "London") %>%
@@ -381,127 +313,82 @@ df_placebo_space <- df_did %>%
     did_placebo     = treated_placebo * post
   )
 
-model_placebo_space <- lm(CycleTraffic_bn ~ treated_placebo + post + did_placebo,
-                          data = df_placebo_space)
+twfe_placebo_space <- feols(CycleTraffic_bn ~ did_placebo | Unit + Year,
+                            data = df_placebo_space)
 
-cat("\n PLACEBO 2: Fake Treatment - Greater Manchester\n")
-print(coeftest(model_placebo_space, vcov = vcovHC(model_placebo_space, type = "HC3")))
-
-p_placebo1 <- coeftest(model_placebo_time,
-                       vcov = vcovHC(model_placebo_time, type = "HC3"))["did_placebo", 4]
-p_placebo2 <- coeftest(model_placebo_space,
-                       vcov = vcovHC(model_placebo_space, type = "HC3"))["did_placebo", 4]
+cat("\nplacebo 2 (fake GM):\n")
+print(summary(twfe_placebo_space, vcov = ~Unit))
 
 
-#  Wald Tests
-# HC3 for pre-trends (small pre-period sample)
-# Wild Cluster Bootstrap (Webb weights, Unit-level) for main tests
-# Matches Sviat's approach on the air quality side
+# pre-trends wald + manual WCB
+# HC3 for pre-trends, webb weights on lm with unit+year dummies for main tests
 
-# Manual Wild Cluster Bootstrap (WCB)
-# Webb weights: {-sqrt(3/2), -1, -sqrt(1/2), sqrt(1/2), 1, sqrt(3/2)}
-# Cluster level: Unit (G=7 for main DiD, fewer for placebos)
-# Impose null: residuals from restricted model
-# B = 9999 replications
-# No external package required — base R only
-
-
-wcb_pval <- function(model, param, cluster_var, data, B = 9999, seed = 42) {
-  set.seed(seed)
-
-  # Webb weights
-  webb <- c(-sqrt(3/2), -1, -sqrt(1/2), sqrt(1/2), 1, sqrt(3/2))
-
-  # Observed t-statistic (CR2 clustered SE)
-  cr2_vcov   <- vcovCR(model, cluster = data[[cluster_var]], type = "CR2")
-  t_obs      <- coef(model)[param] / sqrt(cr2_vcov[param, param])
-
-  # Restricted model residuals (impose H0: param = 0)
-  coefs_r        <- coef(model)
-  coefs_r[param] <- 0
-  y_hat_r        <- model.matrix(model) %*% coefs_r
-  resids_r       <- model$model[, 1] - y_hat_r
-
-  clusters <- unique(data[[cluster_var]])
-  G        <- length(clusters)
-
-  t_boot <- numeric(B)
-
-  for (b in seq_len(B)) {
-    # Draw one Webb weight per cluster
-    w <- sample(webb, G, replace = TRUE)
-    names(w) <- clusters
-
-    # Multiply residuals by cluster weight
-    w_vec  <- w[data[[cluster_var]]]
-    y_boot <- as.numeric(y_hat_r + resids_r * w_vec)
-
-    # Refit with bootstrap outcome
-    df_b           <- data
-    df_b[["y_b"]]  <- y_boot
-    form_b         <- update(formula(model), y_b ~ .)
-    mod_b          <- lm(form_b, data = df_b)
-
-    # Bootstrap t-stat
-    vcov_b    <- vcovCR(mod_b, cluster = df_b[[cluster_var]], type = "CR2")
-    t_boot[b] <- coef(mod_b)[param] / sqrt(vcov_b[param, param])
-  }
-
-  # Two-sided p-value
-  p_val <- mean(abs(t_boot) >= abs(t_obs))
-  list(t_obs = t_obs, p_val = p_val, B = B)
-}
-
-# --- HC3 Pre-Trends Test (G=7 units, small pre-period — keep HC3) ---
 df_pre    <- df_did %>% filter(Year < 2019)
 model_pre <- lm(CycleTraffic_bn ~ treated + Year + treated:Year,
                 data = df_pre)
 
-cat("\n WALD TEST 1: Pre-Trends (HC3) \n")
-cat("H0: treated:Year = 0 (London trend same as FMC controls pre-2019)\n\n")
+cat("\npre-trends test (HC3):\n")
 wald_pre <- linearHypothesis(model_pre, "treated:Year = 0",
                              vcov = vcovHC(model_pre, type = "HC3"))
 print(wald_pre)
 
-# -- WCB: Main DiD effect -
-cat("\n WALD TEST 2: Post-Policy Effect (WCB, Webb weights, Unit clustering) \n")
-cat("H0: DiD = 0 | B = 9999\n\n")
-wcb_main <- wcb_pval(model1, "did", "Unit", df_did, B = 9999, seed = 42)
-cat("Observed t:  ", round(wcb_main$t_obs, 4), "\n")
-cat("WCB p-value: ", round(wcb_main$p_val,  4), "\n")
+set.seed(42)
 
-# --- WCB: Placebo 1 fake 2015 ---
-cat("\n WCB PLACEBO 1: Fake 2015 Policy (WCB, Webb weights) \n")
-cat("H0: did_placebo = 0 | B = 9999\n\n")
-wcb_p1 <- wcb_pval(model_placebo_time, "did_placebo", "Unit",
-                   df_placebo_time, B = 9999, seed = 42)
-cat("Observed t:  ", round(wcb_p1$t_obs, 4), "\n")
-cat("WCB p-value: ", round(wcb_p1$p_val,  4), "\n")
+wcb_pval <- function(model, param, cluster_var, data, B = 9999, seed = 42) {
+  set.seed(seed)
+  webb      <- c(-sqrt(3/2), -1, -sqrt(1/2), sqrt(1/2), 1, sqrt(3/2))
+  cr2_vcov  <- vcovCR(model, cluster = data[[cluster_var]], type = "CR2")
+  t_obs     <- coef(model)[param] / sqrt(cr2_vcov[param, param])
+  coefs_r        <- coef(model)
+  coefs_r[param] <- 0
+  y_hat_r   <- model.matrix(model) %*% coefs_r
+  resids_r  <- model$model[, 1] - y_hat_r
+  clusters  <- unique(data[[cluster_var]])
+  G         <- length(clusters)
+  t_boot    <- numeric(B)
+  for (b in seq_len(B)) {
+    w         <- sample(webb, G, replace = TRUE)
+    names(w)  <- clusters
+    w_vec     <- w[data[[cluster_var]]]
+    y_boot    <- as.numeric(y_hat_r + resids_r * w_vec)
+    df_b          <- data
+    df_b[["y_b"]] <- y_boot
+    mod_b     <- lm(update(formula(model), y_b ~ .), data = df_b)
+    vcov_b    <- vcovCR(mod_b, cluster = df_b[[cluster_var]], type = "CR2")
+    t_boot[b] <- coef(mod_b)[param] / sqrt(vcov_b[param, param])
+  }
+  list(t_obs = t_obs, p_val = mean(abs(t_boot) >= abs(t_obs)))
+}
 
-# --- WCB: Placebo 2 fake GM ---
-cat("\n WCB PLACEBO 2: Fake Treatment GM (WCB, Webb weights) \n")
-cat("H0: did_placebo = 0 | B = 9999\n\n")
-wcb_p2 <- wcb_pval(model_placebo_space, "did_placebo", "Unit",
-                   df_placebo_space, B = 9999, seed = 42)
-cat("Observed t:  ", round(wcb_p2$t_obs, 4), "\n")
-cat("WCB p-value: ", round(wcb_p2$p_val,  4), "\n")
+lm_main <- lm(CycleTraffic_bn ~ did + factor(Unit) + factor(Year), data = df_did)
+lm_p1   <- lm(CycleTraffic_bn ~ did_placebo + factor(Unit) + factor(Year),
+               data = df_placebo_time)
+lm_p2   <- lm(CycleTraffic_bn ~ did_placebo + factor(Unit) + factor(Year),
+               data = df_placebo_space)
 
-cat("\n- Summary -\n")
-cat("Pre-trends HC3 p-value:        ", round(wald_pre$`Pr(>F)`[2], 4), "\n")
-cat("Post-policy WCB p-value:       ", round(wcb_main$p_val,        4), "\n")
-cat("Placebo 1 (fake 2015) WCB p:   ", round(wcb_p1$p_val,          4), "\n")
-cat("Placebo 2 (fake GM) WCB p:     ", round(wcb_p2$p_val,          4), "\n")
+cat("\nWCB main effect:\n")
+wcb_main <- wcb_pval(lm_main, "did",         "Unit", df_did)
+cat("p =", round(wcb_main$p_val, 4), "\n")
+
+cat("\nplacebo 2015 WCB:\n")
+wcb_p1 <- wcb_pval(lm_p1, "did_placebo", "Unit", df_placebo_time)
+cat("p =", round(wcb_p1$p_val, 4), "\n")
+
+cat("\nplacebo GM WCB:\n")
+wcb_p2 <- wcb_pval(lm_p2, "did_placebo", "Unit", df_placebo_space)
+cat("p =", round(wcb_p2$p_val, 4), "\n")
+
+cat("\nsummary:\n")
+cat("Pre-trends HC3 p-value:   ", round(wald_pre$`Pr(>F)`[2], 4), "\n")
+cat("Post-policy WCB p-value:  ", round(wcb_main$p_val, 4), "\n")
+cat("Placebo 1 (fake 2015) p:  ", round(wcb_p1$p_val,   4), "\n")
+cat("Placebo 2 (fake GM) p:    ", round(wcb_p2$p_val,   4), "\n")
 
 
-
-#  ACF Plots — Residual Serial Correlation by Unit
-# Check for within-unit autocorrelation post-model
-# If white noise: clustering is sufficient
-# If persistent ACF: serial correlation remains
-
+# acf plots — residuals from TWFE model
 
 df_did <- df_did %>%
-  mutate(resid_did = residuals(model1))
+  mutate(resid_did = residuals(twfe1))
 
 units_ordered <- sort(unique(df_did$Unit))
 
@@ -515,18 +402,16 @@ for (u in units_ordered) {
     pull(resid_did)
 
   acf(resids,
-      main  = u,
-      xlab  = "Lag (Years)",
-      ylab  = "Autocorrelation",
-      col   = "#1f77b4",
-      lwd   = 2,
+      main   = u,
+      xlab   = "Lag (Years)",
+      ylab   = "Autocorrelation",
+      col    = "#1f77b4",
+      lwd    = 2,
       ci.col = "red")
 }
 
 dev.off()
-cat("  - cycling_acf_by_unit.png\n")
 
-# Also city-level aggregated residuals (mean by Unit-Year)
 df_city_resid <- df_did %>%
   group_by(Unit, Year) %>%
   summarise(mean_resid = mean(resid_did), .groups = "drop")
@@ -550,18 +435,5 @@ for (u in units_ordered) {
 }
 
 dev.off()
-cat("  - cycling_acf_city_level.png\n")
 
-# Done
-
-cat("\nDone! Files saved to:", getwd(), "\n")
-cat("  - cycling_parallel_trends_FMC.png\n")
-cat("  - cycling_full_timeseries_FMC.png\n")
-cat("  - cycling_did_coefplot_FMC.png\n")
-cat("  - cycling_event_study_FMC.png\n")
-cat("  - cycling_did_FMC_HC3.txt\n")
-cat("  - cycling_did_FMC_CR2.txt\n")
-cat("  - cycling_acf_by_unit.png\n")
-cat("  - cycling_acf_city_level.png\n")
-
-
+cat("\ndone\n")
